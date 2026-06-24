@@ -20,6 +20,16 @@ function store() {
   return useStore.getState()
 }
 
+// Logical (unzoomed) canvas dimensions. Objects live in this coordinate space;
+// zoom is applied only to the viewport transform, so we must never size or
+// position objects using canvas.getWidth()/getHeight() (those are zoomed).
+function pw() {
+  return store().project.width
+}
+function ph() {
+  return store().project.height
+}
+
 // ---- Selection control styling (accent handles) ----
 function styleControls() {
   fabric.Object.prototype.set({
@@ -232,8 +242,8 @@ export const controller = {
   // ---------- add layers ----------
   centerOn(obj) {
     obj.set({
-      left: canvas.getWidth() / 2,
-      top: canvas.getHeight() / 2,
+      left: pw() / 2,
+      top: ph() / 2,
       originX: 'center',
       originY: 'center',
     })
@@ -243,8 +253,8 @@ export const controller = {
     fabric.Image.fromURL(
       url,
       (img) => {
-        const maxW = canvas.getWidth() * 0.7
-        const maxH = canvas.getHeight() * 0.7
+        const maxW = pw() * 0.7
+        const maxH = ph() * 0.7
         const scale = Math.min(maxW / img.width, maxH / img.height, 1)
         img.scale(scale)
         img.set({
@@ -272,9 +282,9 @@ export const controller = {
       effects: [],
       editable: true,
       fontFamily: 'Inter',
-      fontSize: Math.round(canvas.getWidth() * 0.06),
+      fontSize: Math.round(pw() * 0.06),
       fill: '#111111',
-      width: canvas.getWidth() * 0.6,
+      width: pw() * 0.6,
       textAlign: 'left',
       ...opts,
     })
@@ -286,40 +296,40 @@ export const controller = {
   },
 
   addTextStack(blocks) {
-    // blocks: [{text, size, weight}], stacked vertically as a group
-    const objs = []
-    let top = 0
+    // Add each block as its own editable textbox layer (double-click to edit),
+    // vertically stacked and centred as a group of layers.
+    const width = pw() * 0.7
+    const totalH = blocks.reduce((h, b) => h + b.size * 1.4 + 12, 0)
+    let top = ph() / 2 - totalH / 2
+    let last = null
     blocks.forEach((b) => {
       const tb = new fabric.Textbox(b.text, {
         id: nextId(),
         name: this.autoName('text'),
         layerType: 'text',
         effects: [],
+        editable: true,
         fontFamily: 'DM Sans',
         fontWeight: b.weight || 'normal',
         fontSize: b.size,
         fill: '#111111',
+        originX: 'center',
+        originY: 'top',
+        left: pw() / 2,
         top,
-        left: 0,
-        width: canvas.getWidth() * 0.7,
+        width,
+        textAlign: 'center',
       })
-      objs.push(tb)
+      canvas.add(tb)
+      last = tb
       top += b.size * 1.4 + 12
     })
-    const group = new fabric.Group(objs, {
-      id: nextId(),
-      name: this.autoName('text'),
-      layerType: 'text',
-      effects: [],
-    })
-    this.centerOn(group)
-    canvas.add(group)
-    canvas.setActiveObject(group)
+    if (last) canvas.setActiveObject(last)
     canvas.renderAll()
   },
 
   addShape(shape) {
-    const w = canvas.getWidth()
+    const w = pw()
     const size = w * 0.25
     const common = {
       id: nextId(),
@@ -330,7 +340,7 @@ export const controller = {
       originX: 'center',
       originY: 'center',
       left: w / 2,
-      top: canvas.getHeight() / 2,
+      top: ph() / 2,
     }
     let obj
     switch (shape) {
@@ -389,7 +399,7 @@ export const controller = {
       canvas.setBackgroundColor(value, () => canvas.renderAll())
       store().setProject({ background: value })
     } else if (value && value.type === 'gradient') {
-      const grad = makeGradient(value, canvas.getWidth(), canvas.getHeight())
+      const grad = makeGradient(value, pw(), ph())
       canvas.setBackgroundColor(grad, () => canvas.renderAll())
       store().setProject({ background: value })
     } else if (value && value.type === 'pattern') {
@@ -630,8 +640,8 @@ export const controller = {
     const o = e.target
     if (!o) return
     const threshold = 6 / (store().zoom || 1)
-    const cw = canvas.getWidth()
-    const ch = canvas.getHeight()
+    const cw = pw()
+    const ch = ph()
     const bounds = o.getBoundingRect(true)
     const cx = bounds.left + bounds.width / 2
     const cy = bounds.top + bounds.height / 2
@@ -718,6 +728,10 @@ export const controller = {
   setMask(shape) {
     const o = this.active()
     if (!o) return
+    // Always clear any existing mask first ("select none") so switching directly
+    // from one shape to another rebuilds cleanly.
+    o.clipPath = null
+    o.dirty = true
     o.maskShape = shape
     if (!shape || shape === 'none') {
       o.clipPath = null
@@ -785,15 +799,34 @@ export const controller = {
       }
       o.clipPath = clip
     }
-    canvas.renderAll()
+    o.dirty = true
+    o.setCoords()
+    canvas.requestRenderAll()
     this.commit(shape && shape !== 'none' ? `Mask to ${shape}` : 'Remove mask')
+  },
+
+  // ---------- zoom / viewport ----------
+  // Zoom uses Fabric's native viewport transform (not a CSS transform), so text
+  // editing, hit-testing and snapping all work in true canvas coordinates. The
+  // canvas element is sized to project × zoom; exports temporarily reset to 1×.
+  applyViewport() {
+    if (!canvas) return
+    const z = store().zoom || 1
+    canvas.setViewportTransform([z, 0, 0, z, 0, 0])
+    canvas.setDimensions({ width: pw() * z, height: ph() * z })
+    canvas.requestRenderAll()
+  },
+
+  setZoomTo(zoom) {
+    zoom = Math.max(0.1, Math.min(4, Math.round(zoom * 100) / 100))
+    store().setZoom(zoom)
+    this.applyViewport()
   },
 
   // ---------- canvas size ----------
   resizeCanvas(width, height) {
-    canvas.setWidth(width)
-    canvas.setHeight(height)
     store().setProject({ width, height })
+    this.applyViewport()
     // re-apply gradient/pattern bg to new dimensions
     const bg = store().project.background
     if (typeof bg === 'object') this.applyBackground(bg)
@@ -801,20 +834,16 @@ export const controller = {
     this.commit('Resize canvas')
   },
 
-  // ---------- zoom ----------
-  // The Fabric canvas always renders at full poster resolution; zoom is applied
-  // as a CSS transform on the wrapper (handled in CanvasStage). This keeps
-  // exports crisp regardless of on-screen zoom.
-  setZoomTo(zoom) {
-    zoom = Math.max(0.1, Math.min(4, Math.round(zoom * 100) / 100))
-    store().setZoom(zoom)
-  },
-
   // ---------- export ----------
   exportImage({ format = 'png', quality = 0.92, multiplier = 1, selectionOnly = false }) {
-    const wasGrid = store().showGrid
     canvas.discardActiveObject()
+    // Reset to 1× / true dimensions so the export is full-resolution and crisp.
+    const savedZoom = store().zoom
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
+    canvas.setDimensions({ width: pw(), height: ph() })
     canvas.renderAll()
+
+    let result
     let opts = { format: format === 'jpeg' ? 'jpeg' : format, quality, multiplier }
     if (selectionOnly) {
       const obj = this.active()
@@ -824,9 +853,15 @@ export const controller = {
       }
     }
     if (format === 'svg') {
-      return { svg: canvas.toSVG() }
+      result = { svg: canvas.toSVG() }
+    } else {
+      result = { dataUrl: canvas.toDataURL(opts) }
     }
-    return { dataUrl: canvas.toDataURL(opts) }
+
+    // restore on-screen viewport
+    store().setZoom(savedZoom)
+    this.applyViewport()
+    return result
   },
 }
 

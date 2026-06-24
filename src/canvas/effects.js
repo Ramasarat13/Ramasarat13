@@ -4,6 +4,9 @@ import { fabric } from 'fabric'
 // Glitch, Halftone, Vignette, Grain, Pattern) only implement `applyTo2d`; the
 // WebGL backend would skip them (or throw) because they have no shader path.
 fabric.enableGLFiltering = false
+if (fabric.Canvas2dFilterBackend) {
+  fabric.filterBackend = new fabric.Canvas2dFilterBackend()
+}
 
 // ---- Effect metadata used by the Effects picker UI ----
 export const EFFECT_DEFS = {
@@ -395,6 +398,21 @@ const PatternOverlay = fabric.util.createClass(fabric.Image.filters.BaseFilter, 
   },
 })
 
+// Register custom filters with Fabric. Two reasons:
+//  1) `Image.applyFilters` drops any filter whose `isNeutralState()` is true, and
+//     the base implementation reads `fabric.Image.filters[type].prototype` — which
+//     would be undefined (→ throw) for unregistered custom filters. We register
+//     them AND force isNeutralState→false so they always apply.
+//  2) Lets Fabric revive them if ever deserialized.
+const CUSTOM_FILTERS = { Duotone, Vignette, Dither, Glitch, Grain, Halftone, PatternOverlay }
+Object.entries(CUSTOM_FILTERS).forEach(([name, Cls]) => {
+  Cls.prototype.isNeutralState = function () {
+    return false
+  }
+  Cls.fromObject = fabric.Image.filters.BaseFilter.fromObject
+  fabric.Image.filters[name] = Cls
+})
+
 // ===== Build a Fabric filter from an effect descriptor =====
 function buildFilter(effect) {
   const p = effect.params
@@ -452,6 +470,6 @@ export function applyEffectsToImage(img, effects) {
   try {
     img.applyFilters()
   } catch (e) {
-    /* WebGL/2D fallback handled by fabric */
+    console.error('PosterCraft: failed to apply image filters', e)
   }
 }

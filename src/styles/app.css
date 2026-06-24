@@ -626,13 +626,13 @@
 }
 .canvas-frame {
   position: relative;
+  line-height: 0;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
   flex: none;
 }
+/* Fabric's wrapper stays in-flow so the frame sizes to the (zoomed) canvas. */
 .canvas-frame .canvas-container {
-  position: absolute !important;
-  top: 0;
-  left: 0;
+  display: block;
 }
 .grid-overlay {
   position: absolute;

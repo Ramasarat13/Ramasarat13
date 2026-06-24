@@ -213,6 +213,14 @@ const TEMPLATES = [
 function ShapesTab() {
   return (
     <div className="assets-section">
+      <button
+        className="btn accent"
+        style={{ width: '100%', marginBottom: 12 }}
+        onClick={() => controller.addText('Double-click to edit')}
+      >
+        <Icon name="type" size={14} /> Add a text box
+      </button>
+      <p className="field-label" style={{ marginBottom: 8 }}>Shapes</p>
       <div className="shape-grid">
         {SHAPES.map(([key, label]) => (
           <button key={key} className="shape-cell" title={label} onClick={() => controller.addShape(key)}>

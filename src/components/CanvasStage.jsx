@@ -25,21 +25,12 @@ export default function CanvasStage() {
     const update = () => updateToolbar()
     c.on('after:render', update)
     c.on('selection:cleared', () => setToolbar(null))
+    fit() // apply initial zoom now that the canvas exists
     return () => {
       c.off('after:render', update)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // ---- keep fabric canvas size synced to project ----
-  useEffect(() => {
-    const c = controller.get()
-    if (c && (c.getWidth() !== project.width || c.getHeight() !== project.height)) {
-      c.setWidth(project.width)
-      c.setHeight(project.height)
-      c.renderAll()
-    }
-  }, [project.width, project.height])
 
   // ---- fit-to-screen ----
   const fit = () => {
@@ -69,18 +60,18 @@ export default function CanvasStage() {
   function updateToolbar() {
     const c = controller.get()
     const obj = c?.getActiveObject()
-    if (!obj || !canvasRef.current) {
+    if (!obj || obj.isEditing || !canvasRef.current) {
       setToolbar(null)
       return
     }
     const rect = canvasRef.current.getBoundingClientRect()
-    const sx = rect.width / project.width
-    const sy = rect.height / project.height
+    // getBoundingRect() returns element-space coords (already includes the
+    // viewport zoom), and there is no CSS transform, so screen = rect + b.
     const b = obj.getBoundingRect()
     setToolbar({
-      x: rect.left + b.left * sx + (b.width * sx) / 2,
-      y: rect.top + b.top * sy - 46,
-      visible: b.top * sy > 54,
+      x: rect.left + b.left + b.width / 2,
+      y: rect.top + b.top - 46,
+      visible: b.top > 54,
     })
   }
 
@@ -206,26 +197,17 @@ export default function CanvasStage() {
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
       >
-        <div className="canvas-scaler" style={{ width: frameW, height: frameH }}>
-          <div
-            className="canvas-frame"
-            ref={frameRef}
-            style={{
-              width: project.width,
-              height: project.height,
-              transform: `scale(${zoom})`,
-              transformOrigin: 'top left',
-            }}
-          >
+        <div className="canvas-scaler">
+          <div className="canvas-frame" ref={frameRef}>
             <canvas ref={canvasRef} />
             {showGrid && <div className="grid-overlay" aria-hidden="true" />}
 
-            {/* user guides */}
+            {/* user guides (stored in logical px, drawn at zoom) */}
             {guides.v.map((p, i) => (
               <div
                 key={`v${i}`}
                 className="user-guide vertical"
-                style={{ left: p }}
+                style={{ left: p * zoom }}
                 onDoubleClick={() => setGuides((g) => ({ ...g, v: g.v.filter((_, j) => j !== i) }))}
               />
             ))}
@@ -233,7 +215,7 @@ export default function CanvasStage() {
               <div
                 key={`h${i}`}
                 className="user-guide horizontal"
-                style={{ top: p }}
+                style={{ top: p * zoom }}
                 onDoubleClick={() => setGuides((g) => ({ ...g, h: g.h.filter((_, j) => j !== i) }))}
               />
             ))}
