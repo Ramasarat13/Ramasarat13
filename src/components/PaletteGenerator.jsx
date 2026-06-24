@@ -116,30 +116,61 @@ function Swatches({ colors, onPick }) {
 
 // ---- color helpers ----
 function dominantColors(img, count) {
-  const size = 64
+  const size = 96
   const c = document.createElement('canvas')
   c.width = size
   c.height = size
   const ctx = c.getContext('2d')
   ctx.drawImage(img, 0, 0, size, size)
   const data = ctx.getImageData(0, 0, size, size).data
+
+  // Bucket at a finer resolution (5 bits/channel) keeping the average colour and
+  // a "vividness" weight so saturated colours aren't drowned out by flat areas.
   const buckets = {}
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 128) continue
-    const r = data[i] >> 4
-    const g = data[i + 1] >> 4
-    const b = data[i + 2] >> 4
-    const key = `${r},${g},${b}`
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+    const key = `${r >> 3},${g >> 3},${b >> 3}`
     if (!buckets[key]) buckets[key] = { count: 0, r: 0, g: 0, b: 0 }
-    buckets[key].count++
-    buckets[key].r += data[i]
-    buckets[key].g += data[i + 1]
-    buckets[key].b += data[i + 2]
+    const bk = buckets[key]
+    bk.count++
+    bk.r += r
+    bk.g += g
+    bk.b += b
   }
-  return Object.values(buckets)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, count)
-    .map((b) => rgbToHex(b.r / b.count, b.g / b.count, b.b / b.count))
+
+  const list = Object.values(buckets).map((bk) => {
+    const r = bk.r / bk.count
+    const g = bk.g / bk.count
+    const b = bk.b / bk.count
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const sat = max === 0 ? 0 : (max - min) / max
+    // weight = popularity boosted by saturation so the palette reads vivid
+    const weight = bk.count * (1 + sat * 2.5)
+    return { r, g, b, weight }
+  })
+
+  list.sort((a, b) => b.weight - a.weight)
+
+  // Greedily pick colours that are perceptually distinct from those already chosen.
+  const chosen = []
+  const minDist = 48
+  for (const col of list) {
+    if (chosen.length >= count) break
+    const far = chosen.every(
+      (ch) => Math.hypot(ch.r - col.r, ch.g - col.g, ch.b - col.b) > minDist
+    )
+    if (far) chosen.push(col)
+  }
+  // top up if the image is low-contrast and we couldn't find enough distinct ones
+  for (const col of list) {
+    if (chosen.length >= count) break
+    if (!chosen.includes(col)) chosen.push(col)
+  }
+  return chosen.map((b) => rgbToHex(b.r, b.g, b.b))
 }
 
 function rgbToHex(r, g, b) {

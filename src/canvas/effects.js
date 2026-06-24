@@ -1,5 +1,10 @@
 import { fabric } from 'fabric'
 
+// Force the Canvas2D filter backend. Our custom effects (Duotone, Dither,
+// Glitch, Halftone, Vignette, Grain, Pattern) only implement `applyTo2d`; the
+// WebGL backend would skip them (or throw) because they have no shader path.
+fabric.enableGLFiltering = false
+
 // ---- Effect metadata used by the Effects picker UI ----
 export const EFFECT_DEFS = {
   dither: {

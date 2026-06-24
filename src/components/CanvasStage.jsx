@@ -259,9 +259,13 @@ export default function CanvasStage() {
 
 function MiniToolbar({ pos }) {
   const [opacity, setOpacity] = useState(100)
+  const [angle, setAngle] = useState(0)
   useEffect(() => {
     const o = controller.active()
-    if (o) setOpacity(Math.round((o.opacity ?? 1) * 100))
+    if (o) {
+      setOpacity(Math.round((o.opacity ?? 1) * 100))
+      setAngle(Math.round(o.angle || 0))
+    }
   }, [pos.x, pos.y])
   return (
     <div
@@ -282,6 +286,22 @@ function MiniToolbar({ pos }) {
           }}
           onMouseUp={() => controller.commitLive('Change opacity')}
         />
+      </div>
+      <div className="mini-sep" />
+      <div className="mini-angle" title="Rotation angle">
+        <Icon name="redo" size={13} />
+        <input
+          type="number"
+          value={angle}
+          onChange={(e) => {
+            const v = Number(e.target.value)
+            setAngle(v)
+            controller.liveUpdate({ angle: v })
+          }}
+          onBlur={() => controller.commitLive('Rotate')}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        />
+        <span>°</span>
       </div>
       <div className="mini-sep" />
       <button className="mini-btn" title="Flip horizontal" onClick={() => controller.flip('h')}>

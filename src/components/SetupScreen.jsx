@@ -38,7 +38,7 @@ export default function SetupScreen() {
 
   return (
     <div className="setup-shell">
-      <div className="grain-overlay" aria-hidden="true" />
+      <div className="grain-overlay static" aria-hidden="true" />
       <header className="setup-logo">
         <Logo />
       </header>

@@ -7,6 +7,7 @@ import Icon from '../Icon'
 export default function EffectsSection({ obj }) {
   const [drawer, setDrawer] = useState(false)
   const [expanded, setExpanded] = useState(null)
+  const [dragId, setDragId] = useState(null) // only the row whose handle is held is draggable
   const effects = obj.effects || []
   const dragIndex = useRef(null)
 
@@ -49,8 +50,9 @@ export default function EffectsSection({ obj }) {
             <div
               key={fx.id}
               className={`fx-row ${fx.enabled ? '' : 'disabled'}`}
-              draggable
+              draggable={dragId === fx.id}
               onDragStart={() => (dragIndex.current = i)}
+              onDragEnd={() => setDragId(null)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => {
                 if (dragIndex.current !== null && dragIndex.current !== i) {
@@ -60,10 +62,18 @@ export default function EffectsSection({ obj }) {
                   update(next)
                 }
                 dragIndex.current = null
+                setDragId(null)
               }}
             >
               <div className="fx-head">
-                <span className="fx-drag"><Icon name="drag" size={12} /></span>
+                <span
+                  className="fx-drag"
+                  title="Drag to reorder"
+                  onMouseDown={() => setDragId(fx.id)}
+                  onMouseUp={() => setDragId(null)}
+                >
+                  <Icon name="drag" size={12} />
+                </span>
                 <button className="fx-name" onClick={() => setExpanded(expanded === fx.id ? null : fx.id)}>
                   {def.label}
                 </button>
@@ -76,15 +86,16 @@ export default function EffectsSection({ obj }) {
               </div>
 
               {intensityKey && expanded !== fx.id && (
-                <input
-                  type="range"
-                  className="fx-quick"
-                  min={0}
-                  max={100}
-                  value={fx.params[intensityKey]}
-                  onChange={(e) => patchParam(fx.id, intensityKey, Number(e.target.value))}
-                  onMouseUp={(e) => patchParam(fx.id, intensityKey, Number(e.target.value), true)}
-                />
+                <div className="fx-quick">
+                  <RangeField
+                    label={EFFECT_DEFS[fx.type].params[intensityKey].label}
+                    value={fx.params[intensityKey]}
+                    min={0}
+                    max={100}
+                    onLive={(v) => patchParam(fx.id, intensityKey, v)}
+                    onCommit={(v) => patchParam(fx.id, intensityKey, v, true)}
+                  />
+                </div>
               )}
 
               {expanded === fx.id && (

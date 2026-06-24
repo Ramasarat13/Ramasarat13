@@ -12,15 +12,59 @@ const BLEND_MODES = [
   ['color-burn', 'Color Burn'],
 ]
 
+const MASK_SHAPES = [
+  ['none', 'None'], ['circle', 'Circle'], ['rounded', 'Rounded'],
+  ['triangle', 'Triangle'], ['hexagon', 'Hexagon'], ['diamond', 'Diamond'],
+  ['star', 'Star'], ['isometric', 'Isometric'], ['parallelogram', 'Skew'],
+]
+
 export default function ImageProperties({ obj, shapeMode = false }) {
   return (
     <>
       <TransformSection obj={obj} />
+      {!shapeMode && <MaskSection obj={obj} />}
       <AppearanceSection obj={obj} />
       {shapeMode ? <ShapeFillSection obj={obj} /> : <AdjustmentsSection obj={obj} />}
       <EffectsSection obj={obj} />
     </>
   )
+}
+
+function MaskSection({ obj }) {
+  const active = obj.maskShape || 'none'
+  return (
+    <Section title="Crop to shape">
+      <div className="mask-grid">
+        {MASK_SHAPES.map(([key, label]) => (
+          <button
+            key={key}
+            className={`mask-cell ${active === key ? 'active' : ''}`}
+            title={label}
+            onClick={() => controller.setMask(key)}
+          >
+            <MaskGlyph shape={key} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function MaskGlyph({ shape }) {
+  const c = 'currentColor'
+  const map = {
+    none: <path d="M6 6l16 16M22 6L6 22" stroke={c} strokeWidth="1.6" fill="none" />,
+    circle: <circle cx="14" cy="14" r="9" fill={c} />,
+    rounded: <rect x="5" y="6" width="18" height="16" rx="4" fill={c} />,
+    triangle: <path d="M14 5l10 18H4z" fill={c} />,
+    hexagon: <path d="M9 6h10l5 8-5 8H9l-5-8z" fill={c} />,
+    diamond: <path d="M14 4l10 10-10 10L4 14z" fill={c} />,
+    star: <path d="M14 4l3 6 7 .8-5 4.6 1.4 6.8L14 19l-6.4 3.2L9 15.4 4 10.8 11 10z" fill={c} />,
+    isometric: <path d="M14 8l10 6-10 6L4 14z" fill={c} />,
+    parallelogram: <path d="M9 7h15l-5 14H4z" fill={c} />,
+  }
+  return <svg width="28" height="28" viewBox="0 0 28 28">{map[shape]}</svg>
 }
 
 export function TransformSection({ obj }) {

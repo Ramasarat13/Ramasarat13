@@ -35,6 +35,13 @@ export default function FontPickerModal() {
     try {
       await loadGoogleFont(family, [400, 500, 700])
       setSelected(family)
+      const obj = controller.active()
+      if (obj) {
+        obj.set('fontFamily', family)
+        obj.initDimensions?.()
+        obj.setCoords()
+        controller.get().requestRenderAll()
+      }
       controller.updateActive({ fontFamily: family }, `Change font to ${family}`)
     } catch (e) {
       pushToast("Couldn't load this font. Try another.", 'error')

@@ -12,7 +12,7 @@ let history = { past: [], future: [], labels: [] }
 const HISTORY_LIMIT = 50
 let uid = 0
 const nextId = () => `ly_${Date.now().toString(36)}_${uid++}`
-const SERIALIZE_PROPS = ['id', 'name', 'locked', 'effects', 'layerType']
+const SERIALIZE_PROPS = ['id', 'name', 'locked', 'effects', 'adjustments', 'layerType', 'maskShape']
 
 const TYPE_LABEL = { image: 'Image', text: 'Text', shape: 'Shape' }
 
@@ -65,8 +65,33 @@ export const controller = {
     canvas.on('object:rotating', () => this.syncSelection())
     canvas.on('mouse:up', () => this.clearGuides())
     canvas.on('text:changed', () => {
-      this.syncLayers()
+      store().bumpRev()
     })
+    // Explicitly enter editing on double-click (robust under CSS-scaled canvas).
+    canvas.on('mouse:dblclick', (e) => {
+      const t = e.target
+      if (t && (t.type === 'textbox' || t.type === 'i-text') && !t.locked && !t.isEditing) {
+        t.enterEditing()
+        if (t.hiddenTextarea) t.hiddenTextarea.focus()
+        canvas.renderAll()
+      }
+    })
+    canvas.on('text:editing:exited', () => {
+      this.syncLayers()
+      this.commit('Edit text')
+    })
+
+    // When any web font finishes loading, re-measure + re-render text so it
+    // doesn't stay stuck in the fallback typeface.
+    if (typeof document !== 'undefined' && document.fonts) {
+      document.fonts.addEventListener('loadingdone', () => {
+        if (!canvas) return
+        canvas.getObjects().forEach((o) => {
+          if (o.type === 'textbox' || o.type === 'i-text') o.initDimensions?.()
+        })
+        canvas.requestRenderAll()
+      })
+    }
 
     this.applyBackground(project.background)
     this.commit('New poster', true)
@@ -94,7 +119,16 @@ export const controller = {
 
   // ---------- history ----------
   snapshot() {
-    return JSON.stringify(canvas.toJSON(SERIALIZE_PROPS))
+    const json = canvas.toJSON(SERIALIZE_PROPS)
+    // Image filters are rebuilt from `effects` + `adjustments` on restore, so we
+    // strip the serialized `filters` array. Custom filters (Duotone, Dither, …)
+    // aren't registered with Fabric's revival map and would break loadFromJSON.
+    if (json.objects) {
+      json.objects.forEach((o) => {
+        if (o.filters) delete o.filters
+      })
+    }
+    return JSON.stringify(json)
   },
 
   commit(label = 'Edit', isInitial = false) {
@@ -137,10 +171,9 @@ export const controller = {
   restore(snap) {
     suspendHistory = true
     canvas.loadFromJSON(snap, () => {
-      canvas.renderAll()
-      // re-apply image effects after deserialize
+      // re-apply image adjustments + effects after deserialize
       canvas.getObjects().forEach((o) => {
-        if (o.layerType === 'image' && o.effects) {
+        if (o.layerType === 'image') {
           applyEffectsToImage(o, o.effects)
         }
       })
@@ -219,6 +252,7 @@ export const controller = {
           name: this.autoName('image'),
           layerType: 'image',
           effects: [],
+          adjustments: { brightness: 0, contrast: 0, saturation: 0, hue: 0 },
           ...opts,
         })
         this.centerOn(img)
@@ -236,6 +270,7 @@ export const controller = {
       name: this.autoName('text'),
       layerType: 'text',
       effects: [],
+      editable: true,
       fontFamily: 'Inter',
       fontSize: Math.round(canvas.getWidth() * 0.06),
       fill: '#111111',
@@ -401,12 +436,14 @@ export const controller = {
     this.commit(label || `Edit ${obj.name || 'layer'}`)
   },
 
-  // live update without committing history (for slider drag)
+  // live update without committing history (for slider/dial drag)
   liveUpdate(patch) {
     const obj = this.active()
     if (!obj) return
     obj.set(patch)
+    obj.setCoords()
     canvas.renderAll()
+    store().bumpRev()
   },
 
   commitLive(label) {
@@ -675,6 +712,81 @@ export const controller = {
     canvas.renderAll()
     this.syncLayers()
     this.commit('Update effects')
+  },
+
+  // ---------- shape mask (crop image/shape into a vector silhouette) ----------
+  setMask(shape) {
+    const o = this.active()
+    if (!o) return
+    o.maskShape = shape
+    if (!shape || shape === 'none') {
+      o.clipPath = null
+    } else {
+      // clipPath lives in the object's own (unscaled) coordinate space, centred
+      const w = o.width
+      const h = o.height
+      const s = Math.min(w, h)
+      const common = { originX: 'center', originY: 'center', left: 0, top: 0 }
+      let clip
+      switch (shape) {
+        case 'circle':
+          clip = new fabric.Circle({ ...common, radius: s / 2 })
+          break
+        case 'rounded':
+          clip = new fabric.Rect({ ...common, width: w, height: h, rx: s * 0.12, ry: s * 0.12 })
+          break
+        case 'triangle':
+          clip = new fabric.Triangle({ ...common, width: w, height: h })
+          break
+        case 'hexagon':
+          clip = new fabric.Polygon(polygonPoints(6, s / 2), common)
+          break
+        case 'diamond':
+          clip = new fabric.Polygon(
+            [
+              { x: 0, y: -h / 2 },
+              { x: w / 2, y: 0 },
+              { x: 0, y: h / 2 },
+              { x: -w / 2, y: 0 },
+            ],
+            common
+          )
+          break
+        case 'star':
+          clip = new fabric.Polygon(starPoints(5, s / 2, s / 4), common)
+          break
+        case 'isometric':
+          // a rhombus / isometric tile (2:1 diamond)
+          clip = new fabric.Polygon(
+            [
+              { x: 0, y: -h / 2 },
+              { x: w / 2, y: 0 },
+              { x: 0, y: h / 2 },
+              { x: -w / 2, y: 0 },
+            ],
+            { ...common, scaleY: 0.58 }
+          )
+          break
+        case 'parallelogram': {
+          const skew = w * 0.22
+          clip = new fabric.Polygon(
+            [
+              { x: -w / 2 + skew, y: -h / 2 },
+              { x: w / 2, y: -h / 2 },
+              { x: w / 2 - skew, y: h / 2 },
+              { x: -w / 2, y: h / 2 },
+            ],
+            common
+          )
+          break
+        }
+        default:
+          clip = null
+      }
+      o.clipPath = clip
+    }
+    canvas.renderAll()
+    this.commit(shape && shape !== 'none' ? `Mask to ${shape}` : 'Remove mask')
   },
 
   // ---------- canvas size ----------

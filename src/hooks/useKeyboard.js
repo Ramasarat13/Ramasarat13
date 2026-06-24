@@ -9,12 +9,16 @@ export function useKeyboard() {
     function isTyping(e) {
       const t = e.target
       const tag = t.tagName
+      const active = document.activeElement
+      const a = controller.active?.()
       return (
         tag === 'INPUT' ||
         tag === 'TEXTAREA' ||
         t.isContentEditable ||
-        // fabric inline text editing uses a hidden textarea
-        document.querySelector('.canvas-container textarea:focus')
+        active?.tagName === 'TEXTAREA' ||
+        active?.tagName === 'INPUT' ||
+        // fabric inline text editing
+        !!(a && a.isEditing)
       )
     }
 

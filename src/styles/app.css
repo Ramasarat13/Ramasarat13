@@ -6,15 +6,24 @@
   z-index: 0;
   opacity: 0.05;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  animation: grain-shift 0.6s steps(2) infinite;
+  background-size: 160px 160px;
+  /* promote to its own compositor layer so it doesn't repaint sibling content */
+  will-change: background-position;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  animation: grain-shift 0.8s steps(3) infinite;
 }
 .grain-overlay.subtle {
   opacity: 0.035;
 }
+.grain-overlay.static {
+  animation: none;
+}
 @keyframes grain-shift {
-  0% { transform: translate(0, 0); }
-  50% { transform: translate(-3%, 2%); }
-  100% { transform: translate(2%, -2%); }
+  0% { background-position: 0 0; }
+  33% { background-position: -40px 30px; }
+  66% { background-position: 30px -20px; }
+  100% { background-position: 0 0; }
 }
 
 /* ============ Logo ============ */
@@ -775,6 +784,55 @@
 }
 .mini-btn.danger:hover {
   color: #ff6b6b;
+}
+.mini-angle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.mini-angle input {
+  width: 42px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 4px;
+  font-size: 11px;
+  color: var(--text-primary);
+  outline: none;
+}
+.mini-angle input:focus {
+  border-color: var(--accent);
+}
+
+/* mask / crop-to-shape grid */
+.mask-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.mask-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: border-color 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.mask-cell:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.mask-cell.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
 }
 
 /* ============ Properties controls ============ */
