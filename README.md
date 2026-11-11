@@ -84,3 +84,8 @@ src/
   store/            # Zustand store
   styles/           # design tokens + app styles
 ```
+
+## Also in this repository
+
+[`ios/`](ios/README.md) holds **Strata**, a separate native iOS calendar app (SwiftUI and
+EventKit). It does not share code with PosterCraft.
