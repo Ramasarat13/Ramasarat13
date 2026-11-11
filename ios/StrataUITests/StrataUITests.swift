@@ -13,7 +13,9 @@ final class StrataUITests: XCTestCase {
     }
 
     private var levelLabel: XCUIElement { app.staticTexts["zoomLevelLabel"] }
-    private var timeline: XCUIElement { app.scrollViews["timeline"] }
+    /// Today's row. Pinching it keeps both fingers inside the list, clear of the
+    /// screen edges where the system has gestures of its own.
+    private var today: XCUIElement { app.otherElements["day-today"] }
 
     private func element(containing text: String) -> XCUIElement {
         app.descendants(matching: .any)
@@ -39,22 +41,23 @@ final class StrataUITests: XCTestCase {
 
     func testPinchMovesBetweenLevels() {
         XCTAssertEqual(levelLabel.label, "Schedule")
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
 
-        timeline.pinch(withScale: 3, velocity: 2)
+        today.pinch(withScale: 3, velocity: 2)
         XCTAssertTrue(waitForLevel("Details"), "Pinching out should reach Details, found \(levelLabel.label)")
         attachScreenshot("pinched-out")
 
         // Pinch in until the timeline bottoms out at the most compact level.
         var seen: [String] = []
         for _ in 0..<5 where levelLabel.label != "Glance" {
-            timeline.pinch(withScale: 0.4, velocity: -2)
+            today.pinch(withScale: 0.4, velocity: -2)
             _ = waitForLevel("Glance", timeout: 1.5)
             seen.append(levelLabel.label)
         }
         XCTAssertEqual(levelLabel.label, "Glance", "Levels seen while pinching in: \(seen)")
         attachScreenshot("pinched-in")
 
-        timeline.pinch(withScale: 1.5, velocity: 1)
+        today.pinch(withScale: 1.5, velocity: 1)
         _ = waitForLevel("Titles", timeout: 2)
         XCTAssertNotEqual(levelLabel.label, "Glance", "Pinching out should leave Glance")
     }

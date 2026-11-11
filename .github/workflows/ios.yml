@@ -19,6 +19,8 @@ jobs:
     name: Build and test
     runs-on: macos-15
     timeout-minutes: 40
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: ios
@@ -31,9 +33,14 @@ jobs:
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
           devices = json.load(sys.stdin)["devices"]
+          import re
           phones = [(runtime, d) for runtime, ds in devices.items() if "iOS" in runtime for d in ds if d["name"].startswith("iPhone")]
-          phones.sort(key=lambda p: [int(n) for n in p[0].split("iOS-")[-1].split("-")])
-          runtime, device = phones[-1]
+          # Newest iOS first, then the newest standard-size iPhone ("iPhone 17", not Pro Max or SE).
+          def rank(p):
+              version = [int(n) for n in p[0].split("iOS-")[-1].split("-")]
+              model = re.fullmatch(r"iPhone (\d+)", p[1]["name"])
+              return (version, int(model.group(1)) if model else 0)
+          runtime, device = max(phones, key=rank)
           print(device["udid"])
           sys.stderr.write("Using %s on %s\n" % (device["name"], runtime))
           ')
@@ -72,9 +79,40 @@ jobs:
         run: |
           mkdir -p screenshots
           if [ -d results/ui.xcresult ]; then
-            xcrun xcresulttool export attachments --path results/ui.xcresult --output-path screenshots || true
+            xcrun xcresulttool export attachments --path results/ui.xcresult --output-path screenshots > /dev/null || true
           fi
-          ls -la screenshots || true
+          ls screenshots | wc -l
+
+      # Put "[screenshots]" in a commit message to refresh the images the README shows.
+      - name: Commit README screenshots
+        if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[screenshots]')
+        run: |
+          python3 - <<'PY'
+          import json, os, re, shutil, subprocess
+          found = {}
+          def walk(node):
+              if isinstance(node, dict):
+                  name, file = node.get("suggestedHumanReadableName"), node.get("exportedFileName")
+                  if name and file and file.endswith(".png"):
+                      found[re.sub(r"_\d+_[0-9A-F-]{36}\.png$", "", name)] = file
+                  for value in node.values():
+                      walk(value)
+              elif isinstance(node, list):
+                  for value in node:
+                      walk(value)
+          walk(json.load(open("screenshots/manifest.json")))
+          os.makedirs("docs/screenshots", exist_ok=True)
+          for name, file in sorted(found.items()):
+              target = f"docs/screenshots/{name}.png"
+              shutil.copyfile(f"screenshots/{file}", target)
+              subprocess.run(["sips", "-Z", "1400", target], check=True, stdout=subprocess.DEVNULL)
+              print(target)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots
+          git diff --cached --quiet || git commit -m "Update Strata screenshots [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Upload screenshots
         if: always()

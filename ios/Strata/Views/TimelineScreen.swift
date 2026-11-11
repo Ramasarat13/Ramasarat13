@@ -51,6 +51,9 @@ struct TimelineScreen: View {
                 onAdd: { startNewEvent(on: nil) }
             )
         }
+        // On the whole screen, not just the list, so a pinch still counts when a
+        // finger lands on the header or the toolbar.
+        .simultaneousGesture(magnifyGesture)
         .sheet(item: $sheet) { route in
             switch route {
             case .detail(let event): EventDetailView(event: event)
@@ -122,7 +125,6 @@ struct TimelineScreen: View {
             }
             .scrollPosition(id: $topDay, anchor: .top)
             .scrollIndicators(.hidden)
-            .simultaneousGesture(magnifyGesture)
             .accessibilityIdentifier("timeline")
             .accessibilityZoomAction { action in
                 switch action.direction {

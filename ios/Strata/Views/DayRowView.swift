@@ -50,6 +50,8 @@ struct DayRowView: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(isToday ? "day-today" : "day-\(day.date.formatted(.iso8601.year().month().day()))")
     }
 
     // MARK: Date
