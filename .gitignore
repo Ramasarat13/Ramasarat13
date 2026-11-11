@@ -4,3 +4,11 @@ dist-ssr
 *.local
 .DS_Store
 .vite
+
+# Xcode
+xcuserdata/
+DerivedData/
+ios/build/
+ios/results/
+ios/screenshots/
+*.xcresult

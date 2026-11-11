@@ -1,0 +1,85 @@
+name: iOS
+
+on:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick a simulator
+        run: |
+          xcodebuild -version
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          phones = [(runtime, d) for runtime, ds in devices.items() if "iOS" in runtime for d in ds if d["name"].startswith("iPhone")]
+          phones.sort(key=lambda p: [int(n) for n in p[0].split("iOS-")[-1].split("-")])
+          runtime, device = phones[-1]
+          print(device["udid"])
+          sys.stderr.write("Using %s on %s\n" % (device["name"], runtime))
+          ')
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Strata.xcodeproj -scheme Strata \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath build | xcbeautify --renderer github-actions
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project Strata.xcodeproj -scheme Strata \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath build \
+            -only-testing:StrataTests \
+            -resultBundlePath results/unit.xcresult | xcbeautify --renderer github-actions
+
+      - name: UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project Strata.xcodeproj -scheme Strata \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath build \
+            -only-testing:StrataUITests \
+            -resultBundlePath results/ui.xcresult | xcbeautify --renderer github-actions
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          mkdir -p screenshots
+          if [ -d results/ui.xcresult ]; then
+            xcrun xcresulttool export attachments --path results/ui.xcresult --output-path screenshots || true
+          fi
+          ls -la screenshots || true
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ios/screenshots
+          if-no-files-found: ignore
