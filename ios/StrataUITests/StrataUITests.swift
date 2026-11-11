@@ -57,6 +57,8 @@ final class StrataUITests: XCTestCase {
         XCTAssertNotEqual(month.label, startingMonth, "The header should name the month scrolled to")
 
         app.buttons["Today"].tap()
+        sleep(1)
+        attachScreenshot("back-to-today")
         let back = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "label == %@", startingMonth),
             object: month
@@ -85,14 +87,10 @@ final class StrataUITests: XCTestCase {
         XCTAssertTrue(waitForLevel("Details"), "Pinching out should reach Details, found \(levelLabel.label)")
         attachScreenshot("pinched-out")
 
-        // Pinch in until the timeline bottoms out at the most compact level.
-        var seen: [String] = []
-        for _ in 0..<5 where levelLabel.label != "Glance" {
-            today.pinch(withScale: 0.4, velocity: -2)
-            _ = waitForLevel("Glance", timeout: 1.5)
-            seen.append(levelLabel.label)
-        }
-        XCTAssertEqual(levelLabel.label, "Glance", "Levels seen while pinching in: \(seen)")
+        // One long pinch in, made while today's row is still tall enough to hold two
+        // fingers, carries the timeline all the way down to the most compact level.
+        today.pinch(withScale: 0.12, velocity: -3)
+        XCTAssertTrue(waitForLevel("Glance"), "Pinching in should reach Glance, found \(levelLabel.label)")
         attachScreenshot("pinched-in")
 
         today.pinch(withScale: 1.5, velocity: 1)

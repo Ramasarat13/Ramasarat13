@@ -17,6 +17,7 @@ enum EventPhase {
 /// and how large depends on `metrics`, which follows the pinch continuously.
 struct DayRowView: View {
     let day: TimelineDay
+    let showsMonthLabel: Bool
     let metrics: TimelineMetrics
     let now: Date
     let today: Date
@@ -31,7 +32,7 @@ struct DayRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if day.startsMonth {
+            if showsMonthLabel {
                 MonthLabel(date: day.date, metrics: metrics)
             }
             HStack(alignment: .firstTextBaseline, spacing: metrics.gutter) {

@@ -46,7 +46,7 @@ struct TimelineScreen: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             TimelineToolbar(
                 level: level,
-                onToday: { scrollRequest = ScrollRequest(day: store.today, animated: !reduceMotion) },
+                onToday: { scrollRequest = ScrollRequest(day: store.today) },
                 onLevel: { setLevel($0) },
                 onAdd: { startNewEvent(on: nil) }
             )
@@ -114,6 +114,8 @@ struct TimelineScreen: View {
                     ForEach(store.days) { day in
                         DayRowView(
                             day: day,
+                            // The header already names the month the list starts in.
+                            showsMonthLabel: day.startsMonth && day.id != store.days.first?.id,
                             metrics: metrics,
                             now: now,
                             today: store.today,
@@ -149,20 +151,17 @@ struct TimelineScreen: View {
             }
             .onChange(of: scrollRequest) { _, request in
                 guard let request else { return }
-                if request.animated {
-                    withAnimation(.snappy) {
-                        proxy.scrollTo(request.day, anchor: request.anchor)
-                    }
-                } else {
-                    proxy.scrollTo(request.day, anchor: request.anchor)
-                }
+                proxy.scrollTo(request.day, anchor: request.anchor)
                 // A lazy list only estimates where far-off rows are, so the first jump can
                 // land short. Once it has laid out the rows around the target, go again.
                 Task { @MainActor in
-                    for _ in 0..<2 {
-                        try? await Task.sleep(for: .milliseconds(request.animated ? 400 : 60))
+                    for _ in 0..<3 {
+                        try? await Task.sleep(for: .milliseconds(60))
                         guard scrollRequest == request else { return }
                         proxy.scrollTo(request.day, anchor: request.anchor)
+                    }
+                    if request.anchor == .top {
+                        topDay = request.day
                     }
                 }
             }
@@ -224,7 +223,7 @@ struct TimelineScreen: View {
             // Earlier days were added above. Keep the day that was first in the middle
             // of the screen, so the newly loaded days show just above it.
             if let firstDay {
-                scrollRequest = ScrollRequest(day: firstDay, animated: false, anchor: .center)
+                scrollRequest = ScrollRequest(day: firstDay, anchor: .center)
             }
         }
     }
@@ -254,7 +253,6 @@ struct ZoomDriven<Content: View>: View, Animatable {
 struct ScrollRequest: Equatable {
     let id = UUID()
     let day: Date
-    let animated: Bool
     var anchor: UnitPoint = .top
 }
 
