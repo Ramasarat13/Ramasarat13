@@ -18,6 +18,14 @@ final class CalendarStoreTests: XCTestCase {
         XCTAssertGreaterThan(store.days.count, 30)
     }
 
+    func testOpensOnTodayAndLoadsEarlierEventsOnRequest() async throws {
+        let store = await makeStore()
+        XCTAssertEqual(store.days.first?.date, store.today)
+        await store.loadEarlier()
+        XCTAssertLessThan(try XCTUnwrap(store.days.first?.date), store.today)
+        XCTAssertTrue(store.days.contains { $0.date == store.today })
+    }
+
     func testHidingACalendarRemovesItsEvents() async throws {
         let store = await makeStore()
         XCTAssertTrue(store.days.contains { $0.events.contains { $0.calendarID == "demo:work" } })

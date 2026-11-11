@@ -10,6 +10,7 @@ struct TimelineHeader: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(date, format: .dateTime.month(.wide))
                 .font(.largeTitle.bold())
+                .accessibilityIdentifier("headerMonth")
             Text(date, format: .dateTime.year())
                 .font(.largeTitle)
                 .foregroundStyle(.tertiary)
@@ -76,14 +77,17 @@ struct TimelineToolbar: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 20)
+        .padding(.top, 32)
         .padding(.bottom, 8)
         .background {
-            // Fades the timeline out behind the controls so they stay readable.
+            // Fades the timeline out before it reaches the controls, so nothing shows through them.
             LinearGradient(
-                colors: [Color(.systemBackground).opacity(0), Color(.systemBackground).opacity(0.92)],
+                stops: [
+                    .init(color: Color(.systemBackground).opacity(0), location: 0),
+                    .init(color: Color(.systemBackground), location: 0.38),
+                ],
                 startPoint: .top,
-                endPoint: .center
+                endPoint: .bottom
             )
             .ignoresSafeArea()
             .allowsHitTesting(false)

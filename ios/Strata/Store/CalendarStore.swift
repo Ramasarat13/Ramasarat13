@@ -106,7 +106,10 @@ final class CalendarStore {
             // A newer reload started while this one was waiting; let it win.
             guard generation == loadGeneration else { return }
             calendars = loadedCalendars.sorted {
-                ($0.accountName, $0.title) < ($1.accountName, $1.title)
+                if $0.accountName != $1.accountName {
+                    return $0.accountName.localizedStandardCompare($1.accountName) == .orderedAscending
+                }
+                return $0.title.localizedStandardCompare($1.title) == .orderedAscending
             }
             calendarsByID = Dictionary(calendars.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             allEvents = loadedEvents
@@ -117,9 +120,9 @@ final class CalendarStore {
         }
     }
 
-    /// Adds another year of history above the current timeline.
+    /// Adds three more months of history above the current timeline.
     func loadEarlier() async {
-        let start = calendar.date(byAdding: .year, value: -1, to: range.start) ?? range.start
+        let start = calendar.date(byAdding: .month, value: -3, to: range.start) ?? range.start
         range = DateInterval(start: start, end: range.end)
         await reload()
     }
@@ -174,7 +177,7 @@ final class CalendarStore {
             .map { key, members in
                 CalendarGroup(id: key, name: members.first?.accountName ?? "", calendars: members)
             }
-            .sorted { $0.name < $1.name }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     var editableCalendars: [CalendarInfo] {
@@ -271,11 +274,11 @@ final class CalendarStore {
         return all.first ?? .notDetermined
     }
 
-    /// A year back and two years ahead, aligned to whole months.
+    /// From today to two years ahead. The timeline opens on today as its first row,
+    /// so it never has to jump into the middle of a long list; `loadEarlier()` adds the past.
     private static func initialRange(around now: Date, calendar: Calendar) -> DateInterval {
-        let monthStart = calendar.dateInterval(of: .month, for: now)?.start ?? calendar.startOfDay(for: now)
-        let start = calendar.date(byAdding: .month, value: -12, to: monthStart) ?? monthStart
-        let end = calendar.date(byAdding: .month, value: 25, to: monthStart) ?? monthStart.addingTimeInterval(86_400 * 760)
+        let start = calendar.startOfDay(for: now)
+        let end = calendar.date(byAdding: .month, value: 24, to: start) ?? start.addingTimeInterval(86_400 * 730)
         return DateInterval(start: start, end: end)
     }
 }

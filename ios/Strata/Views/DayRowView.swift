@@ -143,7 +143,8 @@ struct DayRowView: View {
                 .baselineOffset(metrics.titleSize * 0.18)
             let title = Text(verbatim: event.displayTitle)
                 .foregroundStyle(phase(of: event) == .past ? Color.secondary : Color.primary)
-            line = Text("\(line)\(separator)\(dot) \(title)")
+            // A no-break space keeps a dot from being left behind at the end of a line.
+            line = Text("\(line)\(separator)\(dot)\u{00A0}\(title)")
         }
         let extra = day.events.count - shown.count
         if extra > 0 {

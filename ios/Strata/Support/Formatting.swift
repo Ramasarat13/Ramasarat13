@@ -27,7 +27,8 @@ enum Formatting {
 
     /// "in 25 min", "in 2 hr".
     static func relative(_ date: Date) -> String {
-        date.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated))
+        let text = date.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated))
+        return text.hasSuffix(".") ? String(text.dropLast()) : text
     }
 
     /// The date and time line of an event, e.g. "9:30 – 10:00 AM" or "Nov 11 – 13, 2026".

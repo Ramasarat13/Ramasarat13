@@ -39,6 +39,44 @@ final class StrataUITests: XCTestCase {
         add(attachment)
     }
 
+    func testOpensOnToday() {
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+        let screen = app.windows.firstMatch.frame
+        XCTAssertLessThan(today.frame.minY, screen.height * 0.3, "Today should be the first thing on screen")
+        XCTAssertTrue(element(containing: "Client call").exists)
+    }
+
+    func testHeaderFollowsTheScrollPosition() {
+        let month = app.staticTexts["headerMonth"]
+        XCTAssertTrue(month.waitForExistence(timeout: 5))
+        let startingMonth = month.label
+        for _ in 0..<6 {
+            app.scrollViews["timeline"].swipeUp(velocity: .fast)
+        }
+        attachScreenshot("scrolled-ahead")
+        XCTAssertNotEqual(month.label, startingMonth, "The header should name the month scrolled to")
+
+        app.buttons["Today"].tap()
+        let back = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", startingMonth),
+            object: month
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [back], timeout: 5), .completed)
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+    }
+
+    func testEarlierEventsLoadAboveToday() {
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+        app.buttons["Earlier events"].tap()
+        // Today stays in view, with the newly loaded days above it.
+        sleep(2)
+        XCTAssertTrue(today.exists)
+        let screen = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(today.frame.minY, screen.height * 0.15)
+        XCTAssertLessThan(today.frame.minY, screen.height * 0.85)
+        attachScreenshot("earlier-loaded")
+    }
+
     func testPinchMovesBetweenLevels() {
         XCTAssertEqual(levelLabel.label, "Schedule")
         XCTAssertTrue(today.waitForExistence(timeout: 5))

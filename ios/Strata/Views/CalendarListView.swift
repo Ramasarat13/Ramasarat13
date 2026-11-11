@@ -65,6 +65,7 @@ struct CalendarListView: View {
             }
             .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityValue(visible ? "Shown" : "Hidden")
     }
 }

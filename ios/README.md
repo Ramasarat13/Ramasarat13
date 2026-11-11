@@ -18,6 +18,10 @@ settles on the nearest level.
 | Schedule | One line per event, with its start time |
 | Details | Each event with end time, duration, calendar, place and notes |
 
+| Glance | Titles | Schedule | Details |
+| --- | --- | --- | --- |
+| ![Glance](docs/screenshots/level-0-glance.png) | ![Titles](docs/screenshots/level-1-titles.png) | ![Schedule](docs/screenshots/level-2-schedule.png) | ![Details](docs/screenshots/level-3-details.png) |
+
 Other interactions:
 
 - Tap a day at Glance or Titles to open it at Schedule.
@@ -27,6 +31,8 @@ Other interactions:
   zoom action does the same.
 - Today shows a live marker at the current time. The event in progress is marked
   "Now", and the next one shows how soon it starts.
+- The timeline opens on today and runs two years ahead. **Earlier events** at the
+  top loads the past, three months at a time.
 
 ## Running it
 
@@ -87,4 +93,6 @@ xcodebuild test -project ios/Strata.xcodeproj -scheme Strata \
 ```
 
 The `iOS` GitHub Actions workflow builds the app and runs both test suites on a
-macOS runner for every push that touches `ios/`.
+macOS runner for every push that touches `ios/`. When a commit message contains
+`[screenshots]`, the workflow also saves the UI tests' screenshots to
+`ios/docs/screenshots`, which is where the images above come from.
