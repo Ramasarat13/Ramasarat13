@@ -12,3 +12,4 @@ ios/build/
 ios/results/
 ios/screenshots/
 *.xcresult
+ios/results-ui.log

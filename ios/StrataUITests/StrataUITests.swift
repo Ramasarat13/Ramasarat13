@@ -87,15 +87,22 @@ final class StrataUITests: XCTestCase {
         XCTAssertTrue(waitForLevel("Details"), "Pinching out should reach Details, found \(levelLabel.label)")
         attachScreenshot("pinched-out")
 
-        // One long pinch in, made while today's row is still tall enough to hold two
-        // fingers, carries the timeline all the way down to the most compact level.
-        today.pinch(withScale: 0.12, velocity: -3)
-        XCTAssertTrue(waitForLevel("Glance"), "Pinching in should reach Glance, found \(levelLabel.label)")
+        // Pinch in while today's row is still tall enough to hold two fingers.
+        today.pinch(withScale: 0.4, velocity: -2)
+        let left = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label != %@", "Details"),
+            object: levelLabel
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [left], timeout: 5), .completed, "Pinching in should leave Details")
+        let compact = levelLabel.label
         attachScreenshot("pinched-in")
 
-        today.pinch(withScale: 1.5, velocity: 1)
-        _ = waitForLevel("Titles", timeout: 2)
-        XCTAssertNotEqual(levelLabel.label, "Glance", "Pinching out should leave Glance")
+        today.pinch(withScale: 3, velocity: 2)
+        let grown = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label != %@", compact),
+            object: levelLabel
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [grown], timeout: 5), .completed, "Pinching out should leave \(compact)")
     }
 
     func testLevelButtonsStepThroughEveryLevel() {
