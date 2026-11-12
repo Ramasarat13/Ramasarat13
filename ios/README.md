@@ -43,8 +43,8 @@ Around it:
 
 ## Running it
 
-Requires Xcode 26 or later. The app targets iOS 17 and uses Liquid Glass for the
-floating controls on iOS 26.
+Requires Xcode 16 or later. The app targets iOS 17. Built with Xcode 26, the
+floating controls use Liquid Glass on iOS 26; otherwise they use a blurred material.
 
 1. Open `ios/Strata.xcodeproj`.
 2. Pick an iPhone simulator and press Run.

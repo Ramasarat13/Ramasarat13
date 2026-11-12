@@ -30,11 +30,20 @@ extension View {
     /// The floating-control surface: Liquid Glass where the system has it, a material elsewhere.
     @ViewBuilder
     func glassSurface<S: Shape>(in shape: S) -> some View {
+        // Liquid Glass arrived with the iOS 26 SDK (Swift 6.2). Older Xcodes build the fallback only.
+        #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             glassEffect(.regular.interactive(), in: shape)
         } else {
-            background(.regularMaterial, in: shape)
-                .overlay(shape.stroke(.separator, lineWidth: 0.5))
+            materialSurface(in: shape)
         }
+        #else
+        materialSurface(in: shape)
+        #endif
+    }
+
+    private func materialSurface<S: Shape>(in shape: S) -> some View {
+        background(.regularMaterial, in: shape)
+            .overlay(shape.stroke(.separator, lineWidth: 0.5))
     }
 }

@@ -27,8 +27,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pick a simulator
+      - name: Pick Xcode and a simulator
         run: |
+          # Use the newest Xcode on the runner, so code behind newer-SDK checks is compiled too.
+          NEWEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -v -i beta | sort -V | tail -n 1)
+          if [ -n "$NEWEST" ]; then sudo xcode-select -s "$NEWEST"; fi
           xcodebuild -version
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
@@ -52,7 +55,7 @@ jobs:
           xcodebuild build-for-testing \
             -project Strata.xcodeproj -scheme Strata \
             -destination "id=$SIM_UDID" \
-            -derivedDataPath build | xcbeautify --renderer github-actions
+            -derivedDataPath build | xcbeautify --renderer github-actions | tee results-build.log
 
       - name: Unit tests
         run: |
@@ -87,6 +90,7 @@ jobs:
       - name: Commit README screenshots
         if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[screenshots]')
         run: |
+          if [ ! -f screenshots/manifest.json ]; then echo "No screenshots this run."; exit 0; fi
           python3 - <<'PY'
           import json, os, re, shutil, subprocess
           found = {}
@@ -123,9 +127,12 @@ jobs:
           path: ios/screenshots
           if-no-files-found: ignore
 
-      - name: UI test summary
+      - name: Summary
         if: always()
         run: |
+          if [ -f results-build.log ]; then
+            grep -A 3 -E "error" results-build.log | tail -n 40 || true
+          fi
           if [ -f results-ui.log ]; then
             grep -E "✔|✖|error|Executed [0-9]+ tests" results-ui.log | tail -n 30 || true
           fi
