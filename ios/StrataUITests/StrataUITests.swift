@@ -15,9 +15,12 @@ final class StrataUITests: XCTestCase {
 
     private var timeline: XCUIElement { app.scrollViews["timeline"] }
 
-    /// Today's row. Pinching it keeps both fingers inside the list, clear of the
-    /// screen edges where the system has gestures of its own.
     private var today: XCUIElement { app.otherElements["day-today"] }
+
+    /// The hero card. It is always fully on screen at the top, so pinching it keeps
+    /// both fingers on the display and clear of the edges, where the system has
+    /// gestures of its own. The pinch itself is recognized anywhere on the screen.
+    private var hero: XCUIElement { app.otherElements["hero"] }
 
     private var level: String { timeline.value as? String ?? "" }
 
@@ -69,21 +72,17 @@ final class StrataUITests: XCTestCase {
 
     func testSpreadingRevealsMoreAndPinchingLess() {
         XCTAssertEqual(level, "Titles")
+        XCTAssertTrue(hero.waitForExistence(timeout: 5))
 
-        // A small spread adds a level or two. Today's row still fits on screen, so
-        // the pinch back can keep both fingers inside it.
-        today.pinch(withScale: 1.5, velocity: 1)
-        XCTAssertTrue(waitForLevel(otherThan: "Titles"), "Spreading should leave Titles")
-        attachScreenshot("spread-a-little")
-
-        today.pinch(withScale: 0.4, velocity: -2)
-        XCTAssertTrue(waitForLevel("Titles"), "Pinching should return to Titles, found \(level)")
-
-        // A wide spread goes all the way: the row now spells out the place and the notes.
-        today.pinch(withScale: 3, velocity: 2)
+        // A wide spread goes all the way: rows now spell out the place and the notes.
+        hero.pinch(withScale: 3, velocity: 2)
         XCTAssertTrue(waitForLevel("Notes"), "Spreading wide should reach Notes, found \(level)")
         XCTAssertTrue(element(containing: "Video call").exists)
-        attachScreenshot("spread-wide")
+        attachScreenshot("spread")
+
+        hero.pinch(withScale: 0.4, velocity: -2)
+        XCTAssertTrue(waitForLevel(otherThan: "Notes"), "Pinching should take detail away, still at \(level)")
+        attachScreenshot("pinched")
     }
 
     func testViewOptionsStepThroughEveryLevel() {

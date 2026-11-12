@@ -94,6 +94,8 @@ struct TimelineScreen: View {
                         onLevel: { setLevel($0) },
                         onEarlier: { loadEarlier() }
                     )
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("hero")
                     .padding(.top, 4)
                     .padding(.bottom, 6)
                     .id(Self.heroID)
