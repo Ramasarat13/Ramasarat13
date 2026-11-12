@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// One event at the Schedule and Details levels. Details adds the end time,
-/// duration, calendar, place and notes, which fade in as the pinch arrives.
+/// One event, written as a line of text that grows with the zoom: first the title,
+/// then its time sliding in beside it, then its place and calendar, then its notes,
+/// each arriving word by word.
 struct EventRowView: View {
     let event: CalendarEvent
     let placement: TimelineDay.Placement
@@ -12,28 +13,35 @@ struct EventRowView: View {
     let isNext: Bool
     let actions: TimelineActions
 
-    private var color: Color { (calendar?.color ?? .gray).color }
+    /// Notes can run long; the timeline shows their opening and the detail sheet the rest.
+    private static let maxNoteWords = 45
+
+    private var calendarColor: Color { (calendar?.color ?? .gray).color }
 
     var body: some View {
         Button {
             actions.open(event)
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: metrics.gutter) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
                 timeColumn
-                    .frame(width: metrics.timeColumnWidth, alignment: .leading)
-                textColumn
-                    .padding(.leading, 10)
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(color)
-                            .frame(width: 3)
-                    }
+                Circle()
+                    .fill(calendarColor)
+                    .frame(width: metrics.dotSize, height: metrics.dotSize)
+                    // A dot has no baseline; sit it at the middle of the title's letters.
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + metrics.titleSize * 0.31 }
+                    .padding(.trailing, 10)
+                    .accessibilityHidden(true)
+                paragraph
+                    .font(.system(size: metrics.titleSize, weight: .light))
+                    .lineSpacing(5)
+                    .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .opacity(phase == .past ? 0.45 : 1)
+        .accessibilityLabel(accessibilityText)
         .contextMenu {
             Button {
                 actions.open(event)
@@ -55,73 +63,101 @@ struct EventRowView: View {
         }
     }
 
+    // MARK: Time
+
+    /// Slides in from nothing between Titles and Times, pushing the text aside.
     private var timeColumn: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(startLabel)
-                .foregroundStyle(phase == .current ? Color.accentColor : Color.secondary)
-            if metrics.level == .details, let endLabel {
+                .foregroundStyle(phase == .current ? Color.live : Color.secondary)
+            if let endLabel, metrics.detailReveal > 0 {
                 Text(endLabel)
                     .foregroundStyle(.tertiary)
                     .opacity(metrics.detailReveal)
             }
         }
-        .font(.system(size: metrics.metaSize))
+        .font(.system(size: metrics.timeSize))
         .monospacedDigit()
         .lineLimit(1)
-        .minimumScaleFactor(0.75)
+        .fixedSize()
+        .frame(width: metrics.timeColumnWidth, alignment: .leading)
+        .clipped()
+        .opacity(metrics.timeReveal)
+        .accessibilityHidden(true)
     }
-
-    private var textColumn: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(event.displayTitle)
-                    .font(.system(size: metrics.titleSize, weight: .medium))
-                    .lineLimit(metrics.level == .details ? 3 : 1)
-                if let badge {
-                    Text(badge)
-                        .font(.system(size: metrics.metaSize, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-            }
-            if metrics.level == .details {
-                VStack(alignment: .leading, spacing: 3) {
-                    if !metaLine.isEmpty {
-                        Text(metaLine)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let location = event.location {
-                        Text("\(Image(systemName: "mappin.and.ellipse")) \(location)")
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    if let notes = event.notes {
-                        Text(notes)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(3)
-                    }
-                }
-                .font(.system(size: metrics.metaSize))
-                .multilineTextAlignment(.leading)
-                .opacity(metrics.detailReveal)
-            }
-        }
-    }
-
-    // MARK: Labels
 
     private var startLabel: String {
         switch placement {
-        case .allDay: "all-day"
+        case .allDay: "All day"
         case .within, .startsToday: Formatting.time(event.start)
-        case .endsToday: "→ \(Formatting.time(event.end))"
+        case .endsToday: "Until"
         }
     }
 
     private var endLabel: String? {
-        guard placement == .within, event.end > event.start else { return nil }
-        return Formatting.time(event.end)
+        switch placement {
+        case .within: event.end > event.start ? Formatting.time(event.end) : nil
+        case .endsToday: Formatting.time(event.end)
+        case .allDay, .startsToday: nil
+        }
+    }
+
+    // MARK: Text
+
+    private var paragraph: Text {
+        var text = Text(verbatim: event.displayTitle).foregroundStyle(Color.ink)
+
+        if let badge {
+            let label = Text(verbatim: badge)
+                .font(.system(size: metrics.timeSize, weight: .medium))
+                .foregroundStyle(Color.live)
+            text = Text("\(text)\u{00A0}\u{00A0}\(label)")
+        }
+
+        for piece in WordReveal.pieces(for: detailRuns, fraction: metrics.detailReveal) {
+            text = Text("\(text) \(styled(piece))")
+        }
+
+        let notes = WordReveal.pieces(for: noteRuns, fraction: metrics.notesReveal)
+        for (index, piece) in notes.enumerated() {
+            // Notes start on a line of their own.
+            text = Text("\(text)\(Text(verbatim: index == 0 ? "\n" : " "))\(styled(piece))")
+        }
+        return text
+    }
+
+    private func styled(_ piece: WordReveal.Piece) -> Text {
+        let color: Color = switch piece.role {
+        case .secondary: .secondary
+        case .calendar: calendarColor
+        case .notes: Color.secondary.opacity(0.8)
+        }
+        return Text(verbatim: piece.text).foregroundStyle(color.opacity(piece.opacity))
+    }
+
+    /// Place and calendar, e.g. "· Studio, Room 2 · Work".
+    private var detailRuns: [RevealRun] {
+        var runs: [RevealRun] = []
+        if let location = event.location {
+            runs.append(RevealRun(text: "· \(location)", role: .secondary))
+        }
+        if event.isRecurring {
+            runs.append(RevealRun(text: "· Repeats", role: .secondary))
+        }
+        if let calendar {
+            runs.append(RevealRun(text: "·", role: .secondary))
+            runs.append(RevealRun(text: calendar.title, role: .calendar))
+        }
+        return runs
+    }
+
+    private var noteRuns: [RevealRun] {
+        guard let notes = event.notes else { return [] }
+        let words = notes.split(whereSeparator: \.isWhitespace)
+        guard words.count > Self.maxNoteWords else {
+            return [RevealRun(text: words.joined(separator: " "), role: .notes)]
+        }
+        return [RevealRun(text: words.prefix(Self.maxNoteWords).joined(separator: " ") + "…", role: .notes)]
     }
 
     private var badge: String? {
@@ -135,17 +171,21 @@ struct EventRowView: View {
         }
     }
 
-    private var metaLine: String {
-        var parts: [String] = []
-        if placement == .within, event.end > event.start {
-            parts.append(Formatting.duration(from: event.start, to: event.end))
+    /// What VoiceOver reads: everything the row currently shows, in order.
+    private var accessibilityText: String {
+        var parts: [String] = [event.displayTitle]
+        if let badge { parts.append(badge) }
+        if metrics.level >= .times {
+            parts.append(placement == .allDay ? "All day" : Formatting.time(event.start))
         }
-        if let calendar {
-            parts.append(calendar.title)
+        if metrics.level >= .details {
+            if let endLabel { parts.append("until \(endLabel)") }
+            if let location = event.location { parts.append(location) }
+            if let calendar { parts.append("\(calendar.title) calendar") }
         }
-        if event.isRecurring {
-            parts.append("Repeats")
+        if metrics.level >= .notes, let notes = event.notes {
+            parts.append(notes)
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 }

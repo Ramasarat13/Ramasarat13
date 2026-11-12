@@ -1,12 +1,17 @@
 import Combine
 import SwiftUI
 
-/// The main screen: one continuous, pinchable timeline of every visible calendar.
+/// The home tab: the hero card, then one continuous timeline of every visible calendar.
+/// Spreading two fingers makes every event say more; pinching makes it say less.
 struct TimelineScreen: View {
     @Environment(CalendarStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var typeScale: CGFloat = 1
+
+    @Binding var sheet: SheetRoute?
+    /// Goes up each time the Home tab is tapped while already showing, to return to the top.
+    let homeTaps: Int
 
     /// Continuous zoom; whole numbers are the four levels.
     @State private var zoom = TimelineScreen.storedZoom()
@@ -17,11 +22,11 @@ struct TimelineScreen: View {
     @State private var anchorDay: Date?
     @State private var topDay: Date?
     @State private var scrollRequest: ScrollRequest?
-    @State private var sheet: SheetRoute?
     @State private var pendingDelete: CalendarEvent?
     @State private var errorMessage: String?
 
     private static let zoomKey = "zoomLevel"
+    private static let heroID = "hero"
 
     private var level: ZoomLevel { TimelineZoom.level(for: zoom) }
 
@@ -38,29 +43,8 @@ struct TimelineScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            TimelineHeader(date: topDay ?? store.today, isDemo: store.isDemo) {
-                sheet = .calendars
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            TimelineToolbar(
-                level: level,
-                onToday: { scrollRequest = ScrollRequest(day: store.today) },
-                onLevel: { setLevel($0) },
-                onAdd: { startNewEvent(on: nil) }
-            )
-        }
-        // On the whole screen, not just the list, so a pinch still counts when a
-        // finger lands on the header or the toolbar.
+        // On the whole screen, so a pinch counts wherever the fingers land.
         .simultaneousGesture(magnifyGesture)
-        .sheet(item: $sheet) { route in
-            switch route {
-            case .detail(let event): EventDetailView(event: event)
-            case .editor(let draft): EventEditorView(draft: draft)
-            case .calendars: CalendarListView()
-            }
-        }
         .deleteEventDialog($pendingDelete) { event, span in
             Task {
                 do {
@@ -84,6 +68,9 @@ struct TimelineScreen: View {
         .onChange(of: isPinching) { _, pinching in
             if !pinching { finishPinch() }
         }
+        .onChange(of: homeTaps) { _, _ in
+            scrollRequest = ScrollRequest(target: .top)
+        }
     }
 
     // MARK: Timeline
@@ -91,7 +78,6 @@ struct TimelineScreen: View {
     private func timeline(zoom animatedZoom: Double, now: Date) -> some View {
         let metrics = TimelineMetrics(zoom: animatedZoom, typeScale: typeScale)
         let actions = TimelineActions(
-            zoomInto: { setLevel(.schedule, anchor: $0) },
             open: { sheet = .detail($0) },
             edit: { sheet = .editor(EventDraft(editing: $0)) },
             delete: { pendingDelete = $0 },
@@ -100,22 +86,21 @@ struct TimelineScreen: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    Button {
-                        loadEarlier()
-                    } label: {
-                        Label("Earlier events", systemImage: "chevron.up")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    HeroCard(
+                        now: now,
+                        week: week(from: now),
+                        level: level,
+                        onSelectDay: { jump(toDayOnOrAfter: $0) },
+                        onLevel: { setLevel($0) },
+                        onEarlier: { loadEarlier() }
+                    )
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
+                    .id(Self.heroID)
 
                     ForEach(store.days) { day in
                         DayRowView(
                             day: day,
-                            // The header already names the month the list starts in.
-                            showsMonthLabel: day.startsMonth && day.id != store.days.first?.id,
                             metrics: metrics,
                             now: now,
                             today: store.today,
@@ -125,14 +110,15 @@ struct TimelineScreen: View {
                     }
                 }
                 .scrollTargetLayout()
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 12)
                 .padding(.bottom, 24)
-                // Lines that only exist at some levels slide into place when the level flips.
-                .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: metrics.level)
+                // Lines pushed down by arriving words glide instead of jumping.
+                .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: metrics.step)
             }
             .scrollPosition(id: $topDay, anchor: .top)
             .scrollIndicators(.hidden)
             .accessibilityIdentifier("timeline")
+            .accessibilityValue(level.label)
             .accessibilityZoomAction { action in
                 switch action.direction {
                 case .zoomIn:
@@ -144,27 +130,43 @@ struct TimelineScreen: View {
                 }
             }
             .onChange(of: animatedZoom) { _, _ in
-                // Rows change height as they scale; keep the same day under the top edge.
+                // Rows change height as they fill; keep the same day under the top edge.
                 if let anchorDay {
                     proxy.scrollTo(anchorDay, anchor: .top)
                 }
             }
             .onChange(of: scrollRequest) { _, request in
                 guard let request else { return }
-                proxy.scrollTo(request.day, anchor: request.anchor)
+                perform(request, with: proxy)
                 // A lazy list only estimates where far-off rows are, so the first jump can
                 // land short. Once it has laid out the rows around the target, go again.
                 Task { @MainActor in
                     for _ in 0..<3 {
                         try? await Task.sleep(for: .milliseconds(60))
                         guard scrollRequest == request else { return }
-                        proxy.scrollTo(request.day, anchor: request.anchor)
+                        perform(request, with: proxy)
                     }
-                    if request.anchor == .top {
-                        topDay = request.day
+                    if case .day(let day) = request.target, request.anchor == .top {
+                        topDay = day
                     }
                 }
             }
+        }
+    }
+
+    private func perform(_ request: ScrollRequest, with proxy: ScrollViewProxy) {
+        switch request.target {
+        case .top: proxy.scrollTo(Self.heroID, anchor: .top)
+        case .day(let day): proxy.scrollTo(day, anchor: request.anchor)
+        }
+    }
+
+    /// Today and the six days after it, for the hero card's strip.
+    private func week(from now: Date) -> [HeroDay] {
+        let start = store.calendar.startOfDay(for: now)
+        return (0..<7).compactMap { offset in
+            guard let date = store.calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
+            return HeroDay(date: date, hasEvents: store.daysWithEvents.contains(date))
         }
     }
 
@@ -178,7 +180,8 @@ struct TimelineScreen: View {
             .onChanged { value in
                 if pinchBase == nil {
                     pinchBase = zoom
-                    anchorDay = topDay ?? store.today
+                    // With the hero at the top there is no day to hold; the list just grows downward.
+                    anchorDay = topDay
                 }
                 pinchVelocity = Double(value.velocity)
                 zoom = TimelineZoom.value(base: pinchBase ?? zoom, magnification: Double(value.magnification))
@@ -189,20 +192,24 @@ struct TimelineScreen: View {
     private func finishPinch() {
         guard pinchBase != nil else { return }
         pinchBase = nil
-        setLevel(TimelineZoom.settledLevel(for: zoom, velocity: pinchVelocity), anchor: anchorDay)
+        settle(on: TimelineZoom.settledLevel(for: zoom, velocity: pinchVelocity))
     }
 
-    private func setLevel(_ target: ZoomLevel, anchor: Date? = nil) {
-        anchorDay = anchor ?? topDay ?? store.today
+    private func setLevel(_ target: ZoomLevel) {
+        anchorDay = topDay
+        settle(on: target)
+    }
+
+    private func settle(on target: ZoomLevel) {
         UserDefaults.standard.set(target.rawValue, forKey: Self.zoomKey)
-        withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84)) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) {
             zoom = Double(target.rawValue)
         }
     }
 
     private static func storedZoom() -> Double {
         let defaults = UserDefaults.standard
-        guard defaults.object(forKey: zoomKey) != nil else { return Double(ZoomLevel.schedule.rawValue) }
+        guard defaults.object(forKey: zoomKey) != nil else { return TimelineZoom.minimum }
         return Double(TimelineZoom.level(for: Double(defaults.integer(forKey: zoomKey))).rawValue)
     }
 
@@ -216,6 +223,12 @@ struct TimelineScreen: View {
         }
     }
 
+    /// Scrolls to the given day, or to the next day that has events if it has none.
+    private func jump(toDayOnOrAfter date: Date) {
+        guard let target = store.days.first(where: { $0.date >= date }) else { return }
+        scrollRequest = ScrollRequest(target: target.date == store.today ? .top : .day(target.date))
+    }
+
     private func loadEarlier() {
         let firstDay = store.days.first?.date
         Task {
@@ -223,14 +236,14 @@ struct TimelineScreen: View {
             // Earlier days were added above. Keep the day that was first in the middle
             // of the screen, so the newly loaded days show just above it.
             if let firstDay {
-                scrollRequest = ScrollRequest(day: firstDay, anchor: .center)
+                scrollRequest = ScrollRequest(target: .day(firstDay), anchor: .center)
             }
         }
     }
 }
 
-/// Re-renders its content on every frame of a zoom animation, so text sizes glide
-/// to the settled level instead of jumping there.
+/// Re-renders its content on every frame of a zoom animation, so words arrive and
+/// leave gradually on the way to the settled level instead of all at once.
 struct ZoomDriven<Content: View>: View, Animatable {
     var zoom: Double
     let content: (Double) -> Content
@@ -251,26 +264,30 @@ struct ZoomDriven<Content: View>: View, Animatable {
 }
 
 struct ScrollRequest: Equatable {
+    enum Target: Equatable {
+        /// The hero card, with today right below it.
+        case top
+        case day(Date)
+    }
+
     let id = UUID()
-    let day: Date
+    let target: Target
     var anchor: UnitPoint = .top
 }
 
 enum SheetRoute: Identifiable {
     case detail(CalendarEvent)
     case editor(EventDraft)
-    case calendars
 
     var id: String {
         switch self {
         case .detail(let event): "detail-\(event.id)"
         case .editor(let draft): "editor-\(draft.id)"
-        case .calendars: "calendars"
         }
     }
 }
 
 #Preview("Timeline") {
-    TimelineScreen()
+    TimelineScreen(sheet: .constant(nil), homeTaps: 0)
         .environment(CalendarStore.demo())
 }

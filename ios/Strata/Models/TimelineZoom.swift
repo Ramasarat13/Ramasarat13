@@ -1,25 +1,26 @@
 import CoreGraphics
 import Foundation
 
-/// The four depths of the timeline. Pinching moves between them.
-enum ZoomLevel: Int, CaseIterable, Comparable, Sendable {
-    /// One line per day: the date and a dot per event.
-    case glance
-    /// One line per day with the event titles.
+/// How much each event says. Spreading two fingers moves up a level, pinching moves down.
+/// The text never changes size: every level adds words to the one before.
+enum ZoomLevel: Int, CaseIterable, Comparable, Hashable, Sendable {
+    /// Event titles only.
     case titles
-    /// One line per event with its start time.
-    case schedule
-    /// Every event with its end time, duration, place and notes.
+    /// Titles with their start times.
+    case times
+    /// Adds the end time, place and calendar.
     case details
+    /// Adds the event's notes.
+    case notes
 
     static func < (lhs: ZoomLevel, rhs: ZoomLevel) -> Bool { lhs.rawValue < rhs.rawValue }
 
     var label: String {
         switch self {
-        case .glance: "Glance"
         case .titles: "Titles"
-        case .schedule: "Schedule"
+        case .times: "Times"
         case .details: "Details"
+        case .notes: "Notes"
         }
     }
 
@@ -29,12 +30,13 @@ enum ZoomLevel: Int, CaseIterable, Comparable, Sendable {
 
 /// Maps a pinch onto a continuous zoom value, where each whole number is a level.
 enum TimelineZoom {
-    static let minimum = Double(ZoomLevel.glance.rawValue)
-    static let maximum = Double(ZoomLevel.details.rawValue)
+    static let minimum = Double(ZoomLevel.titles.rawValue)
+    static let maximum = Double(ZoomLevel.notes.rawValue)
     /// How far past either end a pinch can pull before it stops, like a photo at its limits.
-    static let overscroll = 0.35
-    /// Spreading two fingers to this multiple of their starting distance moves one level.
-    static let magnificationPerLevel = 1.6
+    static let overscroll = 0.3
+    /// Spreading two fingers to this multiple of their starting distance moves one level,
+    /// so one comfortable pinch travels from titles to full notes.
+    static let magnificationPerLevel = 1.35
 
     static func value(base: Double, magnification: Double) -> Double {
         let steps = log(max(magnification, 0.01)) / log(magnificationPerLevel)
@@ -53,7 +55,7 @@ enum TimelineZoom {
 
     static func level(for zoom: Double) -> ZoomLevel {
         let clamped = min(max(zoom, minimum), maximum)
-        return ZoomLevel(rawValue: Int(clamped.rounded())) ?? .schedule
+        return ZoomLevel(rawValue: Int(clamped.rounded())) ?? .titles
     }
 
     /// The level a pinch settles on when released. A quick pinch carries a little further.
@@ -63,10 +65,11 @@ enum TimelineZoom {
     }
 }
 
-/// Every size the timeline draws with, derived from the continuous zoom so text
-/// grows and shrinks under the fingers instead of jumping between levels.
+/// What the timeline shows at a given zoom. Everything is derived from the continuous
+/// value, so details arrive gradually under the fingers instead of popping in per level.
 struct TimelineMetrics: Equatable {
     let zoom: Double
+    /// Dynamic Type multiplier.
     let typeScale: CGFloat
     let level: ZoomLevel
 
@@ -76,39 +79,76 @@ struct TimelineMetrics: Equatable {
         self.level = TimelineZoom.level(for: zoom)
     }
 
-    /// Interpolates between one value per level, continuing the slope past either end.
-    private func value(_ glance: CGFloat, _ titles: CGFloat, _ schedule: CGFloat, _ details: CGFloat) -> CGFloat {
-        let stops = [glance, titles, schedule, details]
-        let clamped = min(max(zoom, TimelineZoom.minimum), TimelineZoom.maximum)
-        let lower = min(Int(clamped.rounded(.down)), stops.count - 2)
-        let fraction = CGFloat(zoom) - CGFloat(lower)
-        return stops[lower] + (stops[lower + 1] - stops[lower]) * fraction
+    var headerSize: CGFloat { 17 * typeScale }
+    var titleSize: CGFloat { 17 * typeScale }
+    var timeSize: CGFloat { 14 * typeScale }
+    var dotSize: CGFloat { 5 * typeScale }
+
+    private static func unit(_ value: Double) -> Double { min(max(value, 0), 1) }
+
+    /// 0 at Titles, 1 at Times: how far the start times have slid in.
+    var timeReveal: Double { Self.unit(zoom) }
+    /// 0 at Times, 1 at Details: how much of the place and calendar is written out.
+    var detailReveal: Double { Self.unit(zoom - 1) }
+    /// 0 at Details, 1 at Notes: how much of the notes is written out.
+    var notesReveal: Double { Self.unit(zoom - 2) }
+
+    var timeColumnWidth: CGFloat { 76 * typeScale * CGFloat(timeReveal) }
+
+    /// Rows breathe a little more as they fill with text.
+    var rowSpacing: CGFloat { 13 + 7 * CGFloat(Self.unit(zoom / TimelineZoom.maximum)) }
+    var dayPadding: CGFloat { 22 + 4 * CGFloat(Self.unit(zoom / TimelineZoom.maximum)) }
+
+    /// Changes several times per level. Layout shifts are animated whenever it does,
+    /// so lines pushed down by arriving words glide instead of jumping.
+    var step: Int { Int((zoom * 14).rounded(.down)) }
+}
+
+/// A stretch of text in one color, revealed word by word.
+struct RevealRun: Equatable {
+    let text: String
+    /// Marks which color the view should draw the run in.
+    let role: Role
+
+    enum Role: Equatable {
+        case secondary, calendar, notes
+    }
+}
+
+/// Works out which words of a set of runs are showing at a given fraction.
+enum WordReveal {
+    struct Piece: Equatable {
+        let text: String
+        let role: RevealRun.Role
+        /// 1 for words that have fully arrived; less for the word arriving now.
+        let opacity: Double
     }
 
-    var titleSize: CGFloat { value(12, 15, 17, 20) * typeScale }
-    var metaSize: CGFloat { value(11, 12, 13, 14) * typeScale }
-    var dateSize: CGFloat { value(12, 15, 17, 20) * typeScale }
-    var monthSize: CGFloat { value(11, 12, 13, 14) * typeScale }
-    var dotSize: CGFloat { value(6, 7, 8, 8) * typeScale }
-    var dateColumnWidth: CGFloat { value(52, 60, 68, 78) * typeScale }
-    var timeColumnWidth: CGFloat { value(52, 56, 62, 68) * typeScale }
-    var gutter: CGFloat { value(8, 10, 12, 14) }
-    var dayPadding: CGFloat { value(4, 8, 12, 18) }
-    var eventSpacing: CGFloat { value(4, 6, 9, 16) }
-    var monthTopPadding: CGFloat { value(14, 20, 28, 34) }
+    /// The runs' words up to `fraction` of the total, with the newest word partly faded.
+    static func pieces(for runs: [RevealRun], fraction: Double) -> [Piece] {
+        guard fraction > 0 else { return [] }
+        if fraction >= 1 {
+            return runs.filter { !$0.text.isEmpty }.map { Piece(text: $0.text, role: $0.role, opacity: 1) }
+        }
+        let words = runs.map { $0.text.split(whereSeparator: \.isWhitespace) }
+        let total = words.reduce(0) { $0 + $1.count }
+        guard total > 0 else { return [] }
 
-    /// Fades a level's content out as the zoom nears a level that is laid out
-    /// differently, so the swap between layouts is never seen.
-    var contentOpacity: Double {
-        let distance = abs(zoom - Double(level.rawValue))
-        // Schedule and Details share a layout, so nothing fades between them.
-        if level == .details || (level == .schedule && zoom > Double(level.rawValue)) { return 1 }
-        let progress = min(max((distance - 0.25) / 0.25, 0), 1)
-        return 1 - progress * progress * (3 - 2 * progress)
-    }
-
-    /// 0 when the extra lines of the Details level first appear, 1 once fully there.
-    var detailReveal: Double {
-        min(max((zoom - 2.5) / 0.5, 0), 1)
+        var budget = fraction * Double(total)
+        var result: [Piece] = []
+        for (run, runWords) in zip(runs, words) where budget > 0 {
+            let whole = min(Int(budget.rounded(.down)), runWords.count)
+            if whole > 0 {
+                result.append(Piece(text: runWords.prefix(whole).joined(separator: " "), role: run.role, opacity: 1))
+            }
+            budget -= Double(whole)
+            if whole < runWords.count {
+                if budget > 0 {
+                    result.append(Piece(text: String(runWords[whole]), role: run.role, opacity: budget))
+                }
+                budget = 0
+            }
+        }
+        return result
     }
 }

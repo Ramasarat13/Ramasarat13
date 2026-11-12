@@ -11,6 +11,8 @@ final class CalendarStore {
     private(set) var calendarsByID: [String: CalendarInfo] = [:]
     private(set) var hiddenCalendarIDs: Set<String> = []
     private(set) var days: [TimelineDay] = []
+    /// Start-of-day dates that have at least one visible event.
+    private(set) var daysWithEvents: Set<Date> = []
     /// Midnight at the start of the current day, as of the last build.
     private(set) var today: Date
     private(set) var hasLoaded = false
@@ -146,6 +148,7 @@ final class CalendarStore {
         guard generation == buildGeneration else { return }
         today = calendar.startOfDay(for: now)
         days = built
+        daysWithEvents = Set(built.lazy.filter { !$0.events.isEmpty }.map(\.date))
         hasLoaded = true
     }
 
@@ -156,6 +159,7 @@ final class CalendarStore {
         calendarsByID = [:]
         allEvents = []
         days = []
+        daysWithEvents = []
         hasLoaded = false
     }
 

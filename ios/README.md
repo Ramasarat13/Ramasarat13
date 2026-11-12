@@ -1,42 +1,50 @@
 # Strata
 
 A calendar for iPhone built around one idea: your events are a single continuous
-timeline, and you pinch it like a photo to choose how much you see.
+timeline, and you spread two fingers on it, the way you would zoom a photo, to make
+every event say more.
 
 Strata is a working name. To change it, rename the target in Xcode and update
 `PRODUCT_BUNDLE_IDENTIFIER` (currently `com.zaak.strata`).
 
-## The four levels
+## The timeline
 
-Pinching scales the text under your fingers. When you let go, the timeline
-settles on the nearest level.
+The text never changes size. Each level adds words to the one before, and they
+arrive one at a time under your fingers. Let go and the timeline settles on the
+nearest level.
 
-| Level | What a day shows |
+| Level | What each event says |
 | --- | --- |
-| Glance | The date and one dot per event, colored by calendar |
-| Titles | The date and the day's event titles on one flowing line |
-| Schedule | One line per event, with its start time |
-| Details | Each event with end time, duration, calendar, place and notes |
+| Titles | Its title |
+| Times | Its start time slides in beside the title |
+| Details | Adds the end time, place and calendar |
+| Notes | Adds the opening of its notes |
 
-| Glance | Titles | Schedule | Details |
+| Titles | Times | Details | Notes |
 | --- | --- | --- | --- |
-| ![Glance](docs/screenshots/level-0-glance.png) | ![Titles](docs/screenshots/level-1-titles.png) | ![Schedule](docs/screenshots/level-2-schedule.png) | ![Details](docs/screenshots/level-3-details.png) |
+| ![Titles](docs/screenshots/level-0-titles.png) | ![Times](docs/screenshots/level-1-times.png) | ![Details](docs/screenshots/level-2-details.png) | ![Notes](docs/screenshots/level-3-notes.png) |
 
-Other interactions:
+Around it:
 
-- Tap a day at Glance or Titles to open it at Schedule.
-- Tap an event to see it in full. Touch and hold for Edit and Delete.
-- Touch and hold a date to add an event on that day.
-- The **–** and **+** buttons step through the levels without pinching. VoiceOver's
-  zoom action does the same.
-- Today shows a live marker at the current time. The event in progress is marked
-  "Now", and the next one shows how soon it starts.
-- The timeline opens on today and runs two years ahead. **Earlier events** at the
-  top loads the past, three months at a time.
+- The **hero card** shows today over a sky drawn for the time of day, and the week
+  ahead as a strip of dots: filled when a day has events, hollow when it is free.
+  Tap a day to jump to it.
+- The round button on the card opens **view options**: pick a level without
+  pinching (VoiceOver's zoom action does the same), or load earlier events.
+- Tap an event to see it in full. Touch and hold for Edit and Delete. Touch and
+  hold a date to add an event on that day.
+- Today shows what is live: the event in progress is marked "Now", the next one
+  shows how soon it starts, and once times are showing a marker sits at the
+  current time.
+- The floating bar holds two tabs, **Timeline** and **Calendars**, and the add
+  button. Tapping Timeline again returns to today.
+- The timeline opens on today and runs two years ahead. Earlier events load three
+  months at a time.
 
 ## Running it
 
-Requires Xcode 16 or later. The app targets iOS 17.
+Requires Xcode 26 or later. The app targets iOS 17 and uses Liquid Glass for the
+floating controls on iOS 26.
 
 1. Open `ios/Strata.xcodeproj`.
 2. Pick an iPhone simulator and press Run.
@@ -51,11 +59,11 @@ timeline.
 
 ```
 Strata/
-  Models/      Calendar, event and draft types. Timeline grouping. Zoom maths.
+  Models/      Calendar, event and draft types. Timeline grouping. Zoom and word reveal.
   Providers/   CalendarProvider protocol, the Apple Calendar provider, sample data.
   Store/       CalendarStore: the one object the views read from.
-  Views/       Timeline, event detail, editor, calendar list, first-run screen.
-StrataTests/     Unit tests for grouping, zoom and the store.
+  Views/       Timeline, hero card, tabs, calendars, event detail, editor, first run.
+StrataTests/     Unit tests for grouping, zoom, word reveal and the store.
 StrataUITests/   UI tests, including the pinch, run on sample data.
 ```
 
@@ -89,7 +97,7 @@ protocol methods, and a call to `onChange` when its data changes.
 
 ```
 xcodebuild test -project ios/Strata.xcodeproj -scheme Strata \
-  -destination 'platform=iOS Simulator,name=iPhone 16'
+  -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 The `iOS` GitHub Actions workflow builds the app and runs both test suites on a

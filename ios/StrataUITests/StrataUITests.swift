@@ -7,15 +7,19 @@ final class StrataUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-demoData", "-zoomLevel", "2"]
+        app.launchArguments = ["-demoData", "-zoomLevel", "0"]
         app.launch()
-        XCTAssertTrue(levelLabel.waitForExistence(timeout: 20))
+        XCTAssertTrue(timeline.waitForExistence(timeout: 20))
+        XCTAssertTrue(today.waitForExistence(timeout: 10))
     }
 
-    private var levelLabel: XCUIElement { app.staticTexts["zoomLevelLabel"] }
+    private var timeline: XCUIElement { app.scrollViews["timeline"] }
+
     /// Today's row. Pinching it keeps both fingers inside the list, clear of the
     /// screen edges where the system has gestures of its own.
     private var today: XCUIElement { app.otherElements["day-today"] }
+
+    private var level: String { timeline.value as? String ?? "" }
 
     private func element(containing text: String) -> XCUIElement {
         app.descendants(matching: .any)
@@ -26,10 +30,26 @@ final class StrataUITests: XCTestCase {
     @discardableResult
     private func waitForLevel(_ name: String, timeout: TimeInterval = 5) -> Bool {
         let expectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label == %@", name),
-            object: levelLabel
+            predicate: NSPredicate(format: "value == %@", name),
+            object: timeline
         )
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    private func waitForLevel(otherThan name: String, timeout: TimeInterval = 5) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value != %@", name),
+            object: timeline
+        )
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    private func chooseLevel(_ name: String) {
+        app.buttons["View options"].tap()
+        let option = app.buttons[name]
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        option.tap()
+        XCTAssertTrue(waitForLevel(name), "Expected \(name), found \(level)")
     }
 
     private func attachScreenshot(_ name: String) {
@@ -39,90 +59,38 @@ final class StrataUITests: XCTestCase {
         add(attachment)
     }
 
-    func testOpensOnToday() {
-        XCTAssertTrue(today.waitForExistence(timeout: 5))
+    func testOpensOnTodayUnderTheHero() {
+        XCTAssertEqual(level, "Titles")
+        XCTAssertTrue(app.buttons["View options"].isHittable)
         let screen = app.windows.firstMatch.frame
-        XCTAssertLessThan(today.frame.minY, screen.height * 0.3, "Today should be the first thing on screen")
+        XCTAssertLessThan(today.frame.minY, screen.height * 0.6, "Today should follow the hero card")
         XCTAssertTrue(element(containing: "Client call").exists)
     }
 
-    func testHeaderFollowsTheScrollPosition() {
-        let month = app.staticTexts["headerMonth"]
-        XCTAssertTrue(month.waitForExistence(timeout: 5))
-        let startingMonth = month.label
-        for _ in 0..<6 {
-            app.scrollViews["timeline"].swipeUp(velocity: .fast)
-        }
-        attachScreenshot("scrolled-ahead")
-        XCTAssertNotEqual(month.label, startingMonth, "The header should name the month scrolled to")
-
-        app.buttons["Today"].tap()
-        sleep(1)
-        attachScreenshot("back-to-today")
-        let back = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label == %@", startingMonth),
-            object: month
-        )
-        XCTAssertEqual(XCTWaiter().wait(for: [back], timeout: 5), .completed)
-        XCTAssertTrue(today.waitForExistence(timeout: 5))
-    }
-
-    func testEarlierEventsLoadAboveToday() {
-        XCTAssertTrue(today.waitForExistence(timeout: 5))
-        app.buttons["Earlier events"].tap()
-        // Today stays in view, with the newly loaded days above it.
-        sleep(2)
-        XCTAssertTrue(today.exists)
-        let screen = app.windows.firstMatch.frame
-        XCTAssertGreaterThan(today.frame.minY, screen.height * 0.15)
-        XCTAssertLessThan(today.frame.minY, screen.height * 0.85)
-        attachScreenshot("earlier-loaded")
-    }
-
-    func testPinchMovesBetweenLevels() {
-        XCTAssertEqual(levelLabel.label, "Schedule")
-        XCTAssertTrue(today.waitForExistence(timeout: 5))
+    func testSpreadingRevealsMoreAndPinchingLess() {
+        XCTAssertEqual(level, "Titles")
 
         today.pinch(withScale: 3, velocity: 2)
-        XCTAssertTrue(waitForLevel("Details"), "Pinching out should reach Details, found \(levelLabel.label)")
-        attachScreenshot("pinched-out")
+        XCTAssertTrue(waitForLevel("Notes"), "Spreading should reach Notes, found \(level)")
+        // The row now spells out the place and the notes.
+        XCTAssertTrue(element(containing: "Video call").exists)
+        attachScreenshot("spread")
 
-        // Pinch in while today's row is still tall enough to hold two fingers.
+        // Pinch while today's row is still tall enough to hold two fingers.
         today.pinch(withScale: 0.4, velocity: -2)
-        let left = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label != %@", "Details"),
-            object: levelLabel
-        )
-        XCTAssertEqual(XCTWaiter().wait(for: [left], timeout: 5), .completed, "Pinching in should leave Details")
-        let compact = levelLabel.label
-        attachScreenshot("pinched-in")
-
-        today.pinch(withScale: 3, velocity: 2)
-        let grown = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label != %@", compact),
-            object: levelLabel
-        )
-        XCTAssertEqual(XCTWaiter().wait(for: [grown], timeout: 5), .completed, "Pinching out should leave \(compact)")
+        XCTAssertTrue(waitForLevel(otherThan: "Notes"), "Pinching should leave Notes")
+        attachScreenshot("pinched")
     }
 
-    func testLevelButtonsStepThroughEveryLevel() {
-        attachScreenshot("level-2-schedule")
-
-        app.buttons["More detail"].tap()
-        XCTAssertTrue(waitForLevel("Details"))
-        XCTAssertFalse(app.buttons["More detail"].isEnabled)
-        attachScreenshot("level-3-details")
-
-        app.buttons["Less detail"].tap()
-        XCTAssertTrue(waitForLevel("Schedule"))
-        app.buttons["Less detail"].tap()
-        XCTAssertTrue(waitForLevel("Titles"))
-        attachScreenshot("level-1-titles")
-
-        app.buttons["Less detail"].tap()
-        XCTAssertTrue(waitForLevel("Glance"))
-        XCTAssertFalse(app.buttons["Less detail"].isEnabled)
-        attachScreenshot("level-0-glance")
+    func testViewOptionsStepThroughEveryLevel() {
+        attachScreenshot("level-0-titles")
+        chooseLevel("Times")
+        attachScreenshot("level-1-times")
+        chooseLevel("Details")
+        attachScreenshot("level-2-details")
+        chooseLevel("Notes")
+        attachScreenshot("level-3-notes")
+        chooseLevel("Titles")
     }
 
     func testAddingAnEventShowsItOnTheTimeline() {
@@ -147,11 +115,41 @@ final class StrataUITests: XCTestCase {
         app.buttons["Close"].tap()
     }
 
-    func testCalendarListShowsEveryCalendar() {
+    func testCalendarsTabListsEveryCalendar() {
         app.buttons["Calendars"].tap()
         XCTAssertTrue(element(containing: "Personal").waitForExistence(timeout: 5))
         XCTAssertTrue(element(containing: "Holidays").exists)
         attachScreenshot("calendars")
-        app.buttons["Done"].tap()
+
+        app.buttons["Timeline"].tap()
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+    }
+
+    func testHomeTabReturnsToTheTop() {
+        for _ in 0..<5 {
+            timeline.swipeUp(velocity: .fast)
+        }
+        let options = app.buttons["View options"]
+        XCTAssertFalse(options.exists && options.isHittable, "The hero should have scrolled away")
+        attachScreenshot("scrolled-ahead")
+
+        app.buttons["Timeline"].tap()
+        XCTAssertTrue(options.waitForExistence(timeout: 5))
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+        XCTAssertTrue(options.isHittable)
+    }
+
+    func testEarlierEventsLoadAboveToday() {
+        app.buttons["View options"].tap()
+        let earlier = app.buttons["Load Earlier Events"]
+        XCTAssertTrue(earlier.waitForExistence(timeout: 5))
+        earlier.tap()
+        // Today stays in view, with the newly loaded days above it.
+        sleep(2)
+        XCTAssertTrue(today.exists)
+        let screen = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(today.frame.minY, screen.height * 0.1)
+        XCTAssertLessThan(today.frame.minY, screen.height * 0.85)
+        attachScreenshot("earlier-loaded")
     }
 }

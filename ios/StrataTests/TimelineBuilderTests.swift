@@ -42,7 +42,6 @@ final class TimelineBuilderTests: XCTestCase {
         let days = build([])
         XCTAssertEqual(days.map(\.date), [date(2026, 11, 11)])
         XCTAssertTrue(days[0].events.isEmpty)
-        XCTAssertTrue(days[0].startsMonth)
     }
 
     func testOnlyDaysWithEventsAreListed() {
@@ -82,15 +81,6 @@ final class TimelineBuilderTests: XCTestCase {
         ])
         let day = days.first { $0.date == date(2026, 11, 20) }
         XCTAssertEqual(day?.events.map(\.title), ["Birthday", "Standup", "Lunch"])
-    }
-
-    func testMonthLabelOnlyOnFirstListedDayOfEachMonth() {
-        let days = build([
-            event("A", from: date(2026, 11, 28, 10), to: date(2026, 11, 28, 11)),
-            event("B", from: date(2026, 12, 2, 10), to: date(2026, 12, 2, 11)),
-            event("C", from: date(2026, 12, 5, 10), to: date(2026, 12, 5, 11)),
-        ])
-        XCTAssertEqual(days.map(\.startsMonth), [true, false, true, false])
     }
 
     func testEventsOutsideTheLoadedRangeAreClipped() {

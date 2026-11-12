@@ -6,7 +6,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if store.access == .granted {
-                TimelineScreen()
+                MainView()
             } else {
                 AccessView()
             }
@@ -81,7 +81,7 @@ struct AccessView: View {
     private var message: String {
         switch store.access {
         case .notDetermined, .granted:
-            "Strata draws your events as one continuous timeline. Pinch to move from a glance at the month down to every detail of a day. Your events stay on this iPhone."
+            "Strata draws your events as one continuous timeline. Spread two fingers and every event says more: its time, its place, its notes. Your events stay on this iPhone."
         case .writeOnly:
             "Strata can add events but can't read them yet. To show your timeline, allow full access in Settings, under Privacy & Security, Calendars."
         case .denied, .restricted:

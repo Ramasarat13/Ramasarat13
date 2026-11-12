@@ -3,12 +3,12 @@ import XCTest
 
 final class TimelineZoomTests: XCTestCase {
     func testWholeNumbersMapToLevels() {
-        XCTAssertEqual(TimelineZoom.level(for: 0), .glance)
-        XCTAssertEqual(TimelineZoom.level(for: 1.4), .titles)
-        XCTAssertEqual(TimelineZoom.level(for: 1.6), .schedule)
-        XCTAssertEqual(TimelineZoom.level(for: 3), .details)
-        XCTAssertEqual(TimelineZoom.level(for: -2), .glance)
-        XCTAssertEqual(TimelineZoom.level(for: 9), .details)
+        XCTAssertEqual(TimelineZoom.level(for: 0), .titles)
+        XCTAssertEqual(TimelineZoom.level(for: 1.4), .times)
+        XCTAssertEqual(TimelineZoom.level(for: 1.6), .details)
+        XCTAssertEqual(TimelineZoom.level(for: 3), .notes)
+        XCTAssertEqual(TimelineZoom.level(for: -2), .titles)
+        XCTAssertEqual(TimelineZoom.level(for: 9), .notes)
     }
 
     func testSpreadingByOneStepMovesOneLevel() {
@@ -28,25 +28,52 @@ final class TimelineZoomTests: XCTestCase {
     }
 
     func testQuickPinchCarriesToTheNextLevel() {
-        XCTAssertEqual(TimelineZoom.settledLevel(for: 2.3, velocity: 0), .schedule)
-        XCTAssertEqual(TimelineZoom.settledLevel(for: 2.3, velocity: 3), .details)
-        XCTAssertEqual(TimelineZoom.settledLevel(for: 1.7, velocity: -3), .titles)
+        XCTAssertEqual(TimelineZoom.settledLevel(for: 2.3, velocity: 0), .details)
+        XCTAssertEqual(TimelineZoom.settledLevel(for: 2.3, velocity: 3), .notes)
+        XCTAssertEqual(TimelineZoom.settledLevel(for: 1.7, velocity: -3), .times)
     }
 
-    func testTextSizeGrowsContinuouslyWithZoom() {
-        let sizes = stride(from: -0.3, through: 3.3, by: 0.1).map { TimelineMetrics(zoom: $0).titleSize }
-        XCTAssertEqual(sizes, sizes.sorted())
-        XCTAssertEqual(TimelineMetrics(zoom: 2).titleSize, 17)
+    func testEachLevelRevealsOneMoreLayer() {
+        let titles = TimelineMetrics(zoom: 0)
+        XCTAssertEqual([titles.timeReveal, titles.detailReveal, titles.notesReveal], [0, 0, 0])
+        XCTAssertEqual(titles.timeColumnWidth, 0)
+
+        let times = TimelineMetrics(zoom: 1)
+        XCTAssertEqual([times.timeReveal, times.detailReveal, times.notesReveal], [1, 0, 0])
+
+        let halfway = TimelineMetrics(zoom: 1.5)
+        XCTAssertEqual([halfway.timeReveal, halfway.detailReveal, halfway.notesReveal], [1, 0.5, 0])
+
+        let notes = TimelineMetrics(zoom: 3)
+        XCTAssertEqual([notes.timeReveal, notes.detailReveal, notes.notesReveal], [1, 1, 1])
+    }
+
+    func testTextSizeFollowsDynamicTypeNotZoom() {
+        XCTAssertEqual(TimelineMetrics(zoom: 0).titleSize, TimelineMetrics(zoom: 3).titleSize)
         XCTAssertEqual(TimelineMetrics(zoom: 2, typeScale: 1.5).titleSize, 25.5)
     }
 
-    func testContentIsInvisibleAtTheMomentLayoutsSwap() {
-        XCTAssertEqual(TimelineMetrics(zoom: 1).contentOpacity, 1)
-        XCTAssertEqual(TimelineMetrics(zoom: 1.49).contentOpacity, 0, accuracy: 0.01)
-        XCTAssertEqual(TimelineMetrics(zoom: 1.51).contentOpacity, 0, accuracy: 0.01)
-        // Schedule and Details share a layout, so nothing fades between them.
-        XCTAssertEqual(TimelineMetrics(zoom: 2.5).contentOpacity, 1)
-        XCTAssertEqual(TimelineMetrics(zoom: 2.4).detailReveal, 0)
-        XCTAssertEqual(TimelineMetrics(zoom: 3).detailReveal, 1)
+    func testWordsArriveOneAtATime() {
+        let runs = [
+            RevealRun(text: "· Studio, Room 2", role: .secondary),
+            RevealRun(text: "Work", role: .calendar),
+        ]
+        XCTAssertTrue(WordReveal.pieces(for: runs, fraction: 0).isEmpty)
+
+        // Five words in all; halfway, two have arrived and the third is half in.
+        let partial = WordReveal.pieces(for: runs, fraction: 0.5)
+        XCTAssertEqual(partial.map(\.text), ["· Studio,", "Room"])
+        XCTAssertEqual(partial[0].opacity, 1)
+        XCTAssertEqual(partial[1].opacity, 0.5, accuracy: 0.0001)
+
+        // Past the first run, the second starts arriving in its own color.
+        let crossing = WordReveal.pieces(for: runs, fraction: 0.9)
+        XCTAssertEqual(crossing.map(\.text), ["· Studio, Room 2", "Work"])
+        XCTAssertEqual(crossing.map(\.role), [.secondary, .calendar])
+        XCTAssertEqual(crossing[1].opacity, 0.5, accuracy: 0.0001)
+
+        let full = WordReveal.pieces(for: runs, fraction: 1)
+        XCTAssertEqual(full.map(\.text), ["· Studio, Room 2", "Work"])
+        XCTAssertEqual(full.map(\.opacity), [1, 1])
     }
 }

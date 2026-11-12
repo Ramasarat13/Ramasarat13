@@ -8,8 +8,6 @@ struct TimelineDay: Identifiable, Hashable, Sendable {
     let end: Date
     /// All-day events first, then by start time.
     let events: [CalendarEvent]
-    /// True for the first listed day of each month, which draws the month label.
-    let startsMonth: Bool
 
     var id: Date { date }
 
@@ -77,9 +75,7 @@ enum TimelineBuilder {
 
         var result: [TimelineDay] = []
         result.reserveCapacity(buckets.count)
-        var previousMonth: DateComponents?
         for date in buckets.keys.sorted() {
-            let month = calendar.dateComponents([.year, .month], from: date)
             let end = calendar.date(byAdding: .day, value: 1, to: date).map { calendar.startOfDay(for: $0) }
                 ?? date.addingTimeInterval(86_400)
             let sorted = (buckets[date] ?? []).sorted { lhs, rhs in
@@ -90,8 +86,7 @@ enum TimelineBuilder {
                 if lhs.title != rhs.title { return lhs.title < rhs.title }
                 return lhs.id < rhs.id
             }
-            result.append(TimelineDay(date: date, end: end, events: sorted, startsMonth: month != previousMonth))
-            previousMonth = month
+            result.append(TimelineDay(date: date, end: end, events: sorted))
         }
         return result
     }
