@@ -130,7 +130,7 @@ struct EventRowView: View {
         let color: Color = switch piece.role {
         case .secondary: .secondary
         case .calendar: calendarColor
-        case .notes: Color.secondary.opacity(0.8)
+        case .notes: .secondary
         }
         return Text(verbatim: piece.text).foregroundStyle(color.opacity(piece.opacity))
     }

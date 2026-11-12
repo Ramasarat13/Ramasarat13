@@ -98,7 +98,7 @@ struct BottomBar: View {
             LinearGradient(
                 stops: [
                     .init(color: Color(.systemBackground).opacity(0), location: 0),
-                    .init(color: Color(.systemBackground).opacity(0.9), location: 0.45),
+                    .init(color: Color(.systemBackground).opacity(0.97), location: 0.5),
                 ],
                 startPoint: .top,
                 endPoint: .bottom

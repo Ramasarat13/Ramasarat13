@@ -155,8 +155,8 @@ final class DemoCalendarProvider: CalendarProvider {
             let isWeekend = weekday == 1 || weekday == 7
             if isWeekend {
                 let count = Int.random(in: 0...2, using: &generator)
-                for slot in 0..<count {
-                    let template = lifePool.randomElement(using: &generator) ?? lifePool[0]
+                let picks = lifePool.shuffled(using: &generator).prefix(count)
+                for (slot, template) in picks.enumerated() {
                     add(template, start: time(offset, 9 + slot * 5 + Int.random(in: 0...2, using: &generator)))
                 }
             } else {
@@ -164,8 +164,8 @@ final class DemoCalendarProvider: CalendarProvider {
                 guard Int.random(in: 0..<6, using: &generator) != 0 else { continue }
                 add(Template(title: "Standup", calendarID: work, minutes: 15), start: time(offset, 9, 30))
                 let count = Int.random(in: 0...2, using: &generator)
-                for slot in 0..<count {
-                    let template = workPool.randomElement(using: &generator) ?? workPool[0]
+                let picks = workPool.shuffled(using: &generator).prefix(count)
+                for (slot, template) in picks.enumerated() {
                     add(template, start: time(offset, 11 + slot * 3, Bool.random(using: &generator) ? 0 : 30))
                 }
                 if Int.random(in: 0..<3, using: &generator) == 0 {
